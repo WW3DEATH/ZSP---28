@@ -55,12 +55,7 @@ const STATE = {
 
   // Registered Users (Supports Students with Streams & Teachers without stream restriction)
   users: [
-    { id: "admin_jasim", fullName: "M.N.M. Jaasim", email: "mnmjaasim@gmail.com", role: "ADMIN", stream: "All Streams", spPoints: 450, isVerified: true },
-    { id: "teacher_perera", fullName: "Mr. K. Perera", email: "k.perera@zahira.lk", role: "TEACHER", stream: "All Streams", spPoints: 500, isVerified: true },
-    { id: "student_ahamad", fullName: "Ahamad Rizvi", email: "ahamad.rizvi@zahira.lk", role: "STUDENT", stream: "Physical Science", spPoints: 320, isVerified: true },
-    { id: "student_sara", fullName: "Fathima Sara", email: "sara.fathima@zahira.lk", role: "STUDENT", stream: "Bio Science", spPoints: 280, isVerified: true },
-    { id: "student_nifras", fullName: "M.R. Nifras", email: "nifras.mr@zahira.lk", role: "STUDENT", stream: "Physical Science", spPoints: 210, isVerified: false },
-    { id: "student_aisha", fullName: "Aisha Mariyam", email: "aisha.m@zahira.lk", role: "STUDENT", stream: "Bio Science", spPoints: 190, isVerified: true }
+    { id: "admin_jasim", fullName: "M.N.M. Jaasim", email: "mnmjaasim@gmail.com", role: "ADMIN", stream: "All Streams", spPoints: 450, isVerified: true }
   ],
 
   // Store Items (Admin can Add and Remove)
@@ -99,70 +94,27 @@ const STATE = {
     }
   ],
 
-  redemptions: [
-    {
-      id: "red_001",
-      userId: "student_ahamad",
-      userName: "Ahamad Rizvi",
-      itemId: "item_1",
-      itemTitle: "A/L Combined Mathematics 20-Year Classified Past Papers",
-      spSpent: 150,
-      timestamp: Date.now() - 86400000,
-      status: "Pending",
-      userEmail: "ahamad.rizvi@zahira.lk",
-      userStream: "Physical Science"
-    },
-    {
-      id: "red_002",
-      userId: "student_sara",
-      userName: "Fathima Sara",
-      itemId: "item_2",
-      itemTitle: "A/L Biology Practical Manual & Color Anatomy Schemes",
-      spSpent: 120,
-      timestamp: Date.now() - 172800000,
-      status: "Fulfilled",
-      userEmail: "sara.fathima@zahira.lk",
-      userStream: "Bio Science"
-    }
-  ],
+  redemptions: [],
 
   // Stream-segregated Discussions
   messages: [
     {
       id: "msg_1",
       stream: "Physical Science",
-      senderId: "student_ahamad",
-      senderName: "Ahamad Rizvi",
-      senderRole: "STUDENT",
-      content: "Has anyone completed the 2022 Combined Maths Integration model paper?",
+      senderId: "admin_jasim",
+      senderName: "M.N.M. Jaasim",
+      senderRole: "ADMIN",
+      content: "Welcome to the Physical Science study group. Discussion on Combined Mathematics and Physics topics is open.",
       timestamp: Date.now() - 3600000
     },
     {
       id: "msg_2",
-      stream: "Physical Science",
+      stream: "Bio Science",
       senderId: "admin_jasim",
       senderName: "M.N.M. Jaasim",
       senderRole: "ADMIN",
-      content: "Ensure you review Unit 2 Dynamics and Unit 6 Electromagnetism before Wednesday 8:00 PM quiz!",
-      timestamp: Date.now() - 2400000
-    },
-    {
-      id: "msg_3",
-      stream: "Bio Science",
-      senderId: "student_sara",
-      senderName: "Fathima Sara",
-      senderRole: "STUDENT",
-      content: "For biology practicals, are we allowed to use color pens in histological sketches?",
+      content: "Welcome to the Bio Science study group. Questions regarding Biology practicals and syllabus theory may be posted here.",
       timestamp: Date.now() - 1800000
-    },
-    {
-      id: "msg_4",
-      stream: "Bio Science",
-      senderId: "teacher_perera",
-      senderName: "Mr. K. Perera",
-      senderRole: "TEACHER",
-      content: "Standard HB pencil only for anatomical cross-sections as per examination department rules.",
-      timestamp: Date.now() - 900000
     }
   ],
 
@@ -198,12 +150,23 @@ function requireAdmin() {
 }
 
 function initApp() {
-  // Enforce logged-out state whenever the website is opened
-  STATE.currentUser = null;
+  // Support "Keep me signed in" option: restore session only if saved by user choice
   try {
-    localStorage.removeItem("zsp_current_user");
-    sessionStorage.clear();
-  } catch (e) {}
+    const savedUserStr = localStorage.getItem("zsp_current_user");
+    if (savedUserStr) {
+      const savedUser = JSON.parse(savedUserStr);
+      if (savedUser && savedUser.id) {
+        const found = STATE.users.find(u => u.id === savedUser.id || (u.email && savedUser.email && u.email.toLowerCase() === savedUser.email.toLowerCase()));
+        STATE.currentUser = found || savedUser;
+      } else {
+        STATE.currentUser = null;
+      }
+    } else {
+      STATE.currentUser = null;
+    }
+  } catch (e) {
+    STATE.currentUser = null;
+  }
 
   renderAuthHeader();
   renderHomeSubjects();
@@ -507,6 +470,17 @@ function handleAuthSubmit(e) {
     }
 
     STATE.currentUser = matchedUser;
+
+    // Handle "Keep me signed in" preference
+    const keepSignedIn = document.getElementById("authKeepSignedIn")?.checked;
+    try {
+      if (keepSignedIn) {
+        localStorage.setItem("zsp_current_user", JSON.stringify(matchedUser));
+      } else {
+        localStorage.removeItem("zsp_current_user");
+      }
+    } catch (e) {}
+
     closeLoginModal();
     renderAuthHeader();
     renderHomeSubjects();
@@ -556,6 +530,16 @@ function handleAuthSubmit(e) {
     STATE.users.push(newUser);
     STATE.currentUser = newUser;
 
+    // Handle "Keep me signed in" preference for sign up
+    const keepSignedIn = document.getElementById("authKeepSignedIn")?.checked;
+    try {
+      if (keepSignedIn) {
+        localStorage.setItem("zsp_current_user", JSON.stringify(newUser));
+      } else {
+        localStorage.removeItem("zsp_current_user");
+      }
+    } catch (e) {}
+
     // Sync user to Firebase
     if (db) {
       try {
@@ -578,6 +562,10 @@ function handleAuthSubmit(e) {
 function handleLogout() {
   closeUserDropdown();
   STATE.currentUser = null;
+  try {
+    localStorage.removeItem("zsp_current_user");
+    sessionStorage.clear();
+  } catch (e) {}
   renderAuthHeader();
   renderChatMessages();
   renderUserRedemptionHistory();
@@ -1475,7 +1463,7 @@ function setAdminRedemptionFilter(filter) {
     b.classList.remove("bg-maroon", "text-white");
     b.classList.add("bg-slate-100", "text-slate-700");
   });
-  if (event && event.target) {
+  if (typeof event !== "undefined" && event && event.target) {
     event.target.classList.add("bg-maroon", "text-white");
     event.target.classList.remove("bg-slate-100", "text-slate-700");
   }
@@ -1491,8 +1479,8 @@ function renderAdminRedemptions() {
   const fulfilledEl = document.getElementById("adminStatFulfilledRequests");
 
   const total = STATE.redemptions.length;
-  const pending = STATE.redemptions.filter(r => r.status.toLowerCase() === "pending").length;
-  const fulfilled = STATE.redemptions.filter(r => r.status.toLowerCase() === "fulfilled").length;
+  const pending = STATE.redemptions.filter(r => (r.status || "").toLowerCase() === "pending").length;
+  const fulfilled = STATE.redemptions.filter(r => (r.status || "").toLowerCase() === "fulfilled").length;
 
   if (totalEl) totalEl.innerText = total;
   if (pendingEl) pendingEl.innerText = pending;
@@ -1501,9 +1489,22 @@ function renderAdminRedemptions() {
   const searchInput = document.getElementById("adminRedemptionSearchInput");
   const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
 
+  const filterLower = (STATE.adminRedemptionFilter || "All").toLowerCase();
+
   const filtered = STATE.redemptions.filter(r => {
-    const matchesFilter = (STATE.adminRedemptionFilter === "All") || (r.status.toLowerCase() === STATE.adminRedemptionFilter.toLowerCase());
-    const matchesQuery = !query || r.userName.toLowerCase().includes(query) || r.itemTitle.toLowerCase().includes(query) || (r.userEmail && r.userEmail.toLowerCase().includes(query));
+    const statusLower = (r.status || "").toLowerCase();
+    let matchesFilter = (filterLower === "all");
+    if (!matchesFilter) {
+      if (filterLower === "rejected" || filterLower === "cancelled") {
+        matchesFilter = (statusLower === "rejected" || statusLower === "cancelled");
+      } else {
+        matchesFilter = (statusLower === filterLower);
+      }
+    }
+    const matchesQuery = !query ||
+      (r.userName && r.userName.toLowerCase().includes(query)) ||
+      (r.itemTitle && r.itemTitle.toLowerCase().includes(query)) ||
+      (r.userEmail && r.userEmail.toLowerCase().includes(query));
     return matchesFilter && matchesQuery;
   });
 
@@ -1512,63 +1513,107 @@ function renderAdminRedemptions() {
     return;
   }
 
-  container.innerHTML = filtered.map(r => `
-    <div class="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
-      <div class="flex justify-between items-start">
-        <div>
-          <h4 class="font-bold text-sm text-slate-900">${r.userName}</h4>
-          <p class="text-xs text-slate-500">${r.userEmail || ''} • Stream: <strong>${r.userStream || 'Physical'}</strong></p>
-        </div>
-        <span class="text-xs font-bold px-2.5 py-1 rounded-full ${getStatusBadgeClass(r.status)}">
-          ${r.status}
-        </span>
-      </div>
+  container.innerHTML = filtered.map(r => {
+    const targetId = r.id || r.firebaseKey;
+    const statusLower = (r.status || "pending").toLowerCase();
+    const isCompleted = (statusLower === "fulfilled");
+    const isCancelled = (statusLower === "cancelled" || statusLower === "rejected");
+    const isActive = !isCompleted && !isCancelled;
 
-      <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
-        <div>
-          <p class="font-semibold text-xs text-slate-800">${r.itemTitle}</p>
-          <p class="text-[11px] text-slate-500">${new Date(r.timestamp).toLocaleString()}</p>
+    return `
+      <div class="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
+        <div class="flex justify-between items-start">
+          <div>
+            <h4 class="font-bold text-sm text-slate-900">${r.userName || 'Student'}</h4>
+            <p class="text-xs text-slate-500">${r.userEmail || ''} • Stream: <strong>${r.userStream || 'Physical Science'}</strong></p>
+          </div>
+          <span class="text-xs font-bold px-2.5 py-1 rounded-full ${getStatusBadgeClass(r.status)}">
+            ${isCancelled ? 'Cancelled & Refunded' : isCompleted ? 'Handed Over' : r.status || 'Pending'}
+          </span>
         </div>
-        <span class="font-black text-amber-700 text-sm">${r.spSpent} SP</span>
-      </div>
 
-      <div class="flex justify-end space-x-2 pt-1">
-        ${r.status.toLowerCase() === "pending" ? `
-          <button onclick="updateRedemptionStatus('${r.id}', 'Rejected')" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold">
-            Reject & Refund
-          </button>
-          <button onclick="updateRedemptionStatus('${r.id}', 'Approved')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow">
-            Approve
-          </button>
-          <button onclick="updateRedemptionStatus('${r.id}', 'Fulfilled')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow">
-            Hand Over (Fulfill)
-          </button>
-        ` : r.status.toLowerCase() === "approved" ? `
-          <button onclick="updateRedemptionStatus('${r.id}', 'Rejected')" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold">
-            Cancel & Refund
-          </button>
-          <button onclick="updateRedemptionStatus('${r.id}', 'Fulfilled')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow">
-            Mark Handed Over
-          </button>
-        ` : `
-          <span class="text-xs text-slate-400 italic">Order completed</span>
-        `}
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
+          <div>
+            <p class="font-semibold text-xs text-slate-800">${r.itemTitle || 'Reward Item'}</p>
+            <p class="text-[11px] text-slate-500">${r.timestamp ? new Date(r.timestamp).toLocaleString() : 'Recent'}</p>
+          </div>
+          <span class="font-black text-amber-700 text-sm">${r.spSpent || 0} SP</span>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          ${isActive ? `
+            ${statusLower === "pending" ? `
+              <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Approved')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1 transition">
+                <span class="material-symbols-outlined text-[15px]">done</span>
+                <span>Approve</span>
+              </button>
+            ` : ''}
+            <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Fulfilled')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1 transition">
+              <span class="material-symbols-outlined text-[15px]">inventory_2</span>
+              <span>Mark Handed Over</span>
+            </button>
+            <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Cancelled')" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center space-x-1 transition">
+              <span class="material-symbols-outlined text-[15px]">cancel</span>
+              <span>Cancel & Refund</span>
+            </button>
+          ` : isCompleted ? `
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center space-x-1">
+                <span class="material-symbols-outlined text-[15px]">check_circle</span>
+                <span>Handed Over & Completed</span>
+              </span>
+              <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Cancelled')" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 text-xs font-semibold transition" title="Reverse and refund SP to student">
+                Cancel & Refund
+              </button>
+            </div>
+          ` : `
+            <span class="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 flex items-center space-x-1">
+              <span class="material-symbols-outlined text-[15px]">block</span>
+              <span>Cancelled & Refunded (${r.spSpent || 0} SP)</span>
+            </span>
+          `}
+        </div>
       </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function updateRedemptionStatus(redemptionId, newStatus) {
   if (!requireAdmin()) return;
 
-  const red = STATE.redemptions.find(r => r.id === redemptionId);
-  if (!red) return;
+  const red = STATE.redemptions.find(r => r.id === redemptionId || r.firebaseKey === redemptionId);
+  if (!red) {
+    showToast("⚠️ Redemption request record not found.");
+    return;
+  }
 
-  if (newStatus === "Rejected" && !red.status.includes("Reject")) {
-    const user = STATE.users.find(u => u.id === red.userId);
-    if (user) user.spPoints += red.spSpent;
-    if (STATE.currentUser && STATE.currentUser.id === red.userId) {
-      STATE.currentUser.spPoints += red.spSpent;
+  const prevStatus = (red.status || "").toLowerCase();
+  const isCancelOrReject = (newStatus.toLowerCase() === "cancelled" || newStatus.toLowerCase() === "rejected");
+  const wasAlreadyRefunded = (prevStatus === "cancelled" || prevStatus === "rejected");
+
+  // If cancelling/refunding and not previously refunded, restore Science Points to the student
+  if (isCancelOrReject && !wasAlreadyRefunded) {
+    const refundSp = Number(red.spSpent) || 0;
+
+    // Find user in STATE.users
+    let user = STATE.users.find(u => (red.userId && u.id === red.userId) || (red.userEmail && u.email && u.email.toLowerCase() === red.userEmail.toLowerCase()));
+    if (user) {
+      user.spPoints = (Number(user.spPoints) || 0) + refundSp;
+    }
+
+    if (STATE.currentUser && ((red.userId && STATE.currentUser.id === red.userId) || (red.userEmail && STATE.currentUser.email && STATE.currentUser.email.toLowerCase() === red.userEmail.toLowerCase()))) {
+      STATE.currentUser.spPoints = (Number(STATE.currentUser.spPoints) || 0) + refundSp;
+    }
+
+    // Sync refund to Firebase RTDB
+    if (db && red.userId) {
+      try {
+        const targetUserId = user ? user.id : red.userId;
+        const finalSp = user ? user.spPoints : refundSp;
+        db.ref("users/" + targetUserId + "/spPoints").set(finalSp);
+      } catch (err) {
+        console.warn("RTDB refund SP error:", err);
+      }
     }
   }
 
@@ -1576,11 +1621,12 @@ function updateRedemptionStatus(redemptionId, newStatus) {
 
   // Sync to Firebase RTDB
   if (db) {
+    const targetKey = red.firebaseKey || red.id;
     try {
-      db.ref("redemption_requests/" + red.id).update({ status: newStatus });
-      if (newStatus === "Rejected") {
-        db.ref("users/" + red.userId + "/spPoints").set(STATE.users.find(u => u.id === red.userId)?.spPoints);
-      }
+      db.ref("redemption_requests/" + targetKey).update({
+        status: newStatus,
+        updatedAt: Date.now()
+      });
     } catch (e) {
       console.warn("RTDB update error:", e);
     }
@@ -1589,8 +1635,16 @@ function updateRedemptionStatus(redemptionId, newStatus) {
   renderAuthHeader();
   renderAdminRedemptions();
   renderUserRedemptionHistory();
+  renderLeaderboard();
   updateBadgeCounts();
-  showToast(`Updated request for "${red.userName}" to ${newStatus}`);
+
+  if (isCancelOrReject) {
+    showToast(`↩️ Cancelled request for "${red.userName}" and refunded ${red.spSpent} SP.`);
+  } else if (newStatus === "Fulfilled") {
+    showToast(`🎁 Reward for "${red.userName}" marked as Handed Over!`);
+  } else {
+    showToast(`✅ Updated request for "${red.userName}" to ${newStatus}.`);
+  }
 }
 
 // 4. Chat Moderation across Both Streams
@@ -1634,6 +1688,21 @@ function adminDeleteChatMessage(msgId) {
 // ----------------------------------------------------
 // FIREBASE REALTIME DATABASE SYNC
 // ----------------------------------------------------
+const REMOVED_MOCK_EMAILS = [
+  "k.perera@zahira.lk",
+  "ahamad.rizvi@zahira.lk",
+  "sara.fathima@zahira.lk",
+  "nifras.mr@zahira.lk",
+  "aisha.m@zahira.lk"
+];
+const REMOVED_MOCK_IDS = [
+  "teacher_perera",
+  "student_ahamad",
+  "student_sara",
+  "student_nifras",
+  "student_aisha"
+];
+
 function setupFirebaseRealtime() {
   if (!db) return;
 
@@ -1641,18 +1710,26 @@ function setupFirebaseRealtime() {
   if (statusEl) statusEl.innerText = "Firebase Cloud Connected";
 
   try {
-    // Listen for users
+    // Listen for users (excluding the removed mock demo accounts)
     db.ref("users").on("value", snapshot => {
       const data = snapshot.val();
       if (data) {
-        const cloudUsers = Object.values(data);
+        const cloudUsers = Object.values(data).filter(u => {
+          if (!u) return false;
+          const emailLower = (u.email || "").toLowerCase();
+          return !REMOVED_MOCK_EMAILS.includes(emailLower) && !REMOVED_MOCK_IDS.includes(u.id);
+        });
         cloudUsers.forEach(cu => {
-          const idx = STATE.users.findIndex(u => u.id === cu.id);
+          const idx = STATE.users.findIndex(u => u.id === cu.id || (u.email && cu.email && u.email.toLowerCase() === cu.email.toLowerCase()));
           if (idx >= 0) {
             STATE.users[idx] = cu;
           } else {
             STATE.users.push(cu);
           }
+        });
+        // Also remove mock demo accounts from Firebase RTDB to keep cloud database pristine
+        REMOVED_MOCK_IDS.forEach(mid => {
+          try { db.ref("users/" + mid).remove(); } catch(e) {}
         });
         renderLeaderboard();
         renderAdminUsers();
@@ -1663,7 +1740,13 @@ function setupFirebaseRealtime() {
     db.ref("discussions").on("value", snapshot => {
       const data = snapshot.val();
       if (data) {
-        STATE.messages = Object.values(data);
+        const list = Object.values(data).filter(m => {
+          if (!m) return false;
+          return !REMOVED_MOCK_IDS.includes(m.senderId);
+        });
+        if (list.length > 0) {
+          STATE.messages = list;
+        }
         renderChatMessages();
         renderAdminChatAudit();
       }
@@ -1681,13 +1764,21 @@ function setupFirebaseRealtime() {
 
     // Listen for redemptions
     db.ref("redemption_requests").on("value", snapshot => {
-      const data = snapshot.val();
-      if (data) {
-        STATE.redemptions = Object.values(data);
-        renderAdminRedemptions();
-        renderUserRedemptionHistory();
-        updateBadgeCounts();
-      }
+      const list = [];
+      snapshot.forEach(child => {
+        const val = child.val();
+        if (val) {
+          list.push({
+            ...val,
+            id: val.id || child.key,
+            firebaseKey: child.key
+          });
+        }
+      });
+      STATE.redemptions = list;
+      renderAdminRedemptions();
+      renderUserRedemptionHistory();
+      updateBadgeCounts();
     });
 
     // Listen for Wednesday Exam Synchronized Configuration
@@ -1889,6 +1980,7 @@ function getStatusBadgeClass(status) {
     case "fulfilled":
       return "bg-emerald-100 text-emerald-800 border border-emerald-200";
     case "rejected":
+    case "cancelled":
       return "bg-red-100 text-red-800 border border-red-200";
     default:
       return "bg-amber-100 text-amber-800 border border-amber-200";

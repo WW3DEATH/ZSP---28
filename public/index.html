@@ -672,7 +672,7 @@
               <button onclick="setAdminRedemptionFilter('Pending')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Pending</button>
               <button onclick="setAdminRedemptionFilter('Approved')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Approved</button>
               <button onclick="setAdminRedemptionFilter('Fulfilled')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Fulfilled</button>
-              <button onclick="setAdminRedemptionFilter('Rejected')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Rejected</button>
+              <button onclick="setAdminRedemptionFilter('Rejected')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Cancelled / Refunded</button>
             </div>
           </div>
 
@@ -877,7 +877,7 @@
         <!-- New User Name (Only in Sign Up mode) -->
         <div id="fieldFullName" class="hidden">
           <label class="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
-          <input type="text" id="authFullName" placeholder="e.g. M.R. Nifras" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon bg-white" />
+          <input type="text" id="authFullName" placeholder="e.g. Student Full Name" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon bg-white" />
         </div>
 
         <!-- Role Selection: Teacher or Student (Only in Sign Up mode) -->
@@ -925,6 +925,15 @@
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
           <input type="password" id="loginPassword" placeholder="Enter password" required class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon bg-white" />
+        </div>
+
+        <!-- Keep Me Signed In Option -->
+        <div class="flex items-center justify-between py-1">
+          <label class="flex items-center space-x-2 cursor-pointer select-none">
+            <input type="checkbox" id="authKeepSignedIn" class="w-4 h-4 rounded text-maroon focus:ring-maroon border-slate-300 accent-maroon" />
+            <span class="text-xs font-semibold text-slate-700">Keep me signed in</span>
+          </label>
+          <span class="text-[11px] text-slate-400">Preserve session on this device</span>
         </div>
 
         <button type="submit" id="btnAuthSubmit" class="w-full bg-maroon hover:bg-maroon-dark text-white font-bold py-2.5 rounded-xl shadow text-sm transition">
