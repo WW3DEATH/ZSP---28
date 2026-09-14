@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZSP - 28 | Zahira Science Portal</title>
+  <meta name="description" content="Official Zahira College Mawanella Science Portal for Grade 12 Physical & Bio Science with real-time quizzes, discussions, rewards redemption, and admin management." />
+  <link rel="icon" href="/logo.jpg" />
+
+  <!-- Tailwind CSS CDN for instant styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            maroon: {
+              DEFAULT: '#580A18',
+              dark: '#3A040E',
+              light: '#7A1325'
+            },
+            gold: {
+              DEFAULT: '#D4AF37',
+              dark: '#B38F24',
+              light: '#F5E6A3'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts & Material Symbols -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .material-symbols-outlined {
+      vertical-align: middle;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- TOP BRANDING HEADER -->
+  <header class="bg-maroon text-white sticky top-0 z-50 shadow-md border-b-2 border-gold">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- Left: Logo & Title -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="navigateTo('home')">
+        <img src="/logo.jpg" alt="Zahira Crest" class="w-10 h-10 rounded-full border-2 border-gold shadow-sm object-cover bg-white" />
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold tracking-wider text-gold text-lg">ZSP - 28</span>
+            <span class="text-xs bg-maroon-dark px-2 py-0.5 rounded text-gold-light border border-gold/40 hidden sm:inline-block">LIVE PORTAL</span>
+          </div>
+          <p class="text-[11px] text-slate-200 tracking-wide">Zahira College Mawanella • Science Section</p>
+        </div>
+      </div>
+
+      <!-- Center / Right: Nav Buttons -->
+      <div class="flex items-center space-x-1 sm:space-x-3">
+        <!-- Live Firebase Status Indicator -->
+        <div class="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-black/30 border border-emerald-500/40 text-emerald-400 text-xs mr-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="hidden md:inline font-medium">Cloud RTDB Online</span>
+        </div>
+
+        <!-- User Controls / Auth Status -->
+        <div id="authHeaderControls" class="flex items-center space-x-2">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </div>
+
+    <!-- SUB-NAVIGATION BAR (App Tabs) -->
+    <nav class="bg-maroon-dark/95 border-t border-maroon-light/40 overflow-x-auto">
+      <div class="max-w-7xl mx-auto px-4 flex space-x-1 py-1.5 min-w-max">
+        <button onclick="navigateTo('home')" id="tab-home" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-white bg-maroon border border-gold/30">
+          <span class="material-symbols-outlined text-[18px]">home</span>
+          <span>Dashboard</span>
+        </button>
+        <button onclick="navigateTo('quiz')" id="tab-quiz" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px]">quiz</span>
+          <span>Wednesday Quizzes</span>
+        </button>
+        <button onclick="navigateTo('leaderboard')" id="tab-leaderboard" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px]">leaderboard</span>
+          <span>Rankings & SP</span>
+        </button>
+        <button onclick="navigateTo('redemption')" id="tab-redemption" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px]">card_giftcard</span>
+          <span>SP Redemption Center</span>
+        </button>
+        <button onclick="navigateTo('discussions')" id="tab-discussions" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px]">forum</span>
+          <span>Discussions</span>
+        </button>
+        <button onclick="navigateTo('admin')" id="tab-admin" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px]">shield_person</span>
+          <span>Admin Portal</span>
+          <span id="navPendingBadge" class="hidden ml-1 px-1.5 py-0.2 bg-amber-500 text-slate-900 rounded-full text-[10px] font-bold">0</span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- NOTIFICATION BANNER (Alerts & Confirmations) -->
+  <div id="toastNotification" class="fixed bottom-6 right-6 z-50 max-w-md hidden transition-all duration-300 transform translate-y-2">
+    <div id="toastContent" class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center space-x-3">
+      <span id="toastIcon" class="material-symbols-outlined text-gold">info</span>
+      <p id="toastMessage" class="text-sm font-medium">Notification message</p>
+    </div>
+  </div>
+
+  <!-- MAIN VIEW CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+    <!-- VIEW 1: HOME DASHBOARD -->
+    <section id="view-home" class="app-view space-y-6">
+      <!-- Hero Banner -->
+      <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-maroon to-maroon-dark text-white p-6 sm:p-8 shadow-lg border border-gold/30">
+        <div class="relative z-10 max-w-2xl space-y-3">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gold/20 text-gold-light border border-gold/40">
+            Zahira College Mawanella • Est. 1928
+          </span>
+          <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight">
+            Academic Excellence Through <span class="text-gold">Science & Innovation</span>
+          </h1>
+          <p class="text-slate-200 text-sm sm:text-base leading-relaxed">
+            Welcome to the Grade 12 Physical & Biological Science digital platform. Track syllabus coverage, participate in the Wednesday Competitive Quiz series, and earn Science Points (SP) redeemable for past papers and academic equipment.
+          </p>
+          <div class="pt-2 flex flex-wrap gap-3">
+            <button onclick="navigateTo('quiz')" class="bg-gold hover:bg-gold-dark text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-2">
+              <span class="material-symbols-outlined text-[18px]">play_circle</span>
+              <span>Launch Quiz Center</span>
+            </button>
+            <button onclick="navigateTo('redemption')" class="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-5 py-2.5 rounded-xl font-bold text-sm transition flex items-center space-x-2">
+              <span class="material-symbols-outlined text-[18px]">card_giftcard</span>
+              <span>Browse Reward Items</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-xl bg-maroon/10 text-maroon flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl">school</span>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">Target Stream</p>
+            <p class="text-lg font-bold text-slate-800">Physical & Bio</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl">timer</span>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">Quiz Schedule</p>
+            <p class="text-lg font-bold text-slate-800">Wed 7:30-10 PM</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl">stars</span>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">My Points</p>
+            <p id="homeUserSp" class="text-lg font-bold text-emerald-600">320 SP</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+            <span class="material-symbols-outlined text-2xl">cloud_sync</span>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">Database</p>
+            <p class="text-lg font-bold text-slate-800">Firebase RTDB</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Syllabus Subject Tabs -->
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex items-center justify-between border-b pb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">G.C.E. Advanced Level Science Syllabus</h2>
+            <p class="text-xs text-slate-500">Comprehensive curriculum breakdown for Zahira College students</p>
+          </div>
+          <span class="text-xs font-semibold text-maroon bg-maroon/10 px-3 py-1 rounded-full">National NIE Syllabus</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="subjectCardsContainer">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: QUIZZES -->
+    <section id="view-quiz" class="app-view hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Wednesday Evening Competitive Quizzes</h2>
+            <p class="text-xs text-slate-500">Scheduled strictly between 7:30 PM and 10:00 PM every Wednesday</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-xs bg-amber-100 text-amber-800 font-bold px-3 py-1 rounded-full flex items-center space-x-1">
+              <span class="material-symbols-outlined text-[16px]">schedule</span>
+              <span>Next Session: Wednesday 7:30 PM</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="quizListContainer">
+          <!-- Quiz list rendered via JS -->
+        </div>
+
+        <!-- ACTIVE QUIZ RUNNER MODAL/CONTAINER -->
+        <div id="activeQuizRunner" class="hidden bg-slate-50 p-6 rounded-xl border border-slate-300 space-y-4 mt-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <span id="quizSubjectTag" class="text-xs font-bold uppercase bg-maroon text-white px-2 py-0.5 rounded">Combined Maths</span>
+              <h3 id="quizCurrentTitle" class="text-lg font-bold text-slate-900 mt-1">Quiz Title</h3>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-slate-500">Time Remaining</p>
+              <p id="quizTimerDisplay" class="text-lg font-mono font-bold text-maroon">15:00</p>
+            </div>
+          </div>
+
+          <div id="quizQuestionBox" class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <p id="quizQuestionText" class="text-base font-semibold text-slate-800">Question content</p>
+            <div id="quizOptionsContainer" class="space-y-2">
+              <!-- Options -->
+            </div>
+          </div>
+
+          <div class="flex justify-between items-center pt-2">
+            <button onclick="abandonQuiz()" class="text-xs text-slate-500 hover:text-red-600 font-semibold">Abandon Quiz</button>
+            <button onclick="submitQuizAnswer()" id="btnSubmitQuiz" class="bg-maroon hover:bg-maroon-dark text-white px-6 py-2 rounded-xl font-bold text-sm shadow">
+              Submit & Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: LEADERBOARD & SP -->
+    <section id="view-leaderboard" class="app-view hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Top 10 Science Scholars Leaderboard</h2>
+            <p class="text-xs text-slate-500">Updated weekly after Wednesday 10:00 PM examination cut-off</p>
+          </div>
+          <span class="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full">Top 10 Earn SP Rewards</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px]">
+              <tr>
+                <th class="p-3">Rank</th>
+                <th class="p-3">Student Name</th>
+                <th class="p-3">Academic Stream</th>
+                <th class="p-3">Quiz Score</th>
+                <th class="p-3">Total SP Points</th>
+                <th class="p-3 text-right">Badge</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboardTableBody" class="divide-y divide-slate-100">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: REDEMPTION CENTER -->
+    <section id="view-redemption" class="app-view hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Science Points (SP) Reward Redemption</h2>
+            <p class="text-xs text-slate-500">Exchange your hard-earned quiz points for verified academic tools and past paper books</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-sm font-bold text-slate-700">My Balance:</span>
+            <span id="redemptionUserPoints" class="px-3 py-1 bg-gold text-slate-900 font-black rounded-lg text-sm">320 SP</span>
+          </div>
+        </div>
+
+        <!-- Available Items Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="redemptionItemsGrid">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Student's Personal Redemption History -->
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <h3 class="text-lg font-bold text-slate-800 border-b pb-3">My Redemption History & Request Status</h3>
+        <div id="userRedemptionHistoryList" class="space-y-3">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 5: DISCUSSIONS -->
+    <section id="view-discussions" class="app-view hidden space-y-6">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex items-center justify-between border-b pb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Real-Time Academic Discussion Forum</h2>
+            <p class="text-xs text-slate-500">Synchronized via Firebase Realtime Database across all Zahira science students</p>
+          </div>
+        </div>
+
+        <!-- Message List -->
+        <div id="chatMessagesBox" class="h-96 overflow-y-auto p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+          <!-- Injected via JS -->
+        </div>
+
+        <!-- Input Bar -->
+        <form onsubmit="postChatMessage(event)" class="flex gap-2">
+          <input type="text" id="chatInputMessage" placeholder="Ask a physics derivation question, past paper query, or theory help..." required class="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon text-sm bg-white" />
+          <button type="submit" class="bg-maroon hover:bg-maroon-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow transition flex items-center space-x-1">
+            <span class="material-symbols-outlined text-[18px]">send</span>
+            <span class="hidden sm:inline">Send</span>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- VIEW 6: ADMIN PORTAL -->
+    <section id="view-admin" class="app-view hidden space-y-6">
+      <!-- Admin Header -->
+      <div class="bg-maroon text-white p-6 rounded-2xl shadow-sm border border-gold/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="material-symbols-outlined text-gold">shield_person</span>
+            <h2 class="text-2xl font-black text-white">Administrator Control Panel</h2>
+          </div>
+          <p class="text-xs text-slate-300 mt-1">Manage student verifications, review reward redemptions, and monitor live forum messages</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs bg-white/10 px-3 py-1 rounded-full border border-white/20">Authenticated Admin</span>
+        </div>
+      </div>
+
+      <!-- Admin Sub Tabs -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div class="flex space-x-2 border-b pb-3 overflow-x-auto">
+          <button onclick="switchAdminTab('redemptions')" id="adminTab-redemptions" class="admin-subtab px-4 py-2 rounded-xl text-xs font-bold bg-maroon text-white flex items-center space-x-2">
+            <span class="material-symbols-outlined text-[18px]">card_giftcard</span>
+            <span>Student Redemption Requests</span>
+            <span id="adminPendingRedemptionsCount" class="bg-gold text-slate-900 px-1.5 py-0.5 rounded-full text-[10px]">0</span>
+          </button>
+          <button onclick="switchAdminTab('users')" id="adminTab-users" class="admin-subtab px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center space-x-2">
+            <span class="material-symbols-outlined text-[18px]">people</span>
+            <span>Students & Verification</span>
+            <span id="adminPendingUsersCount" class="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[10px]">0</span>
+          </button>
+          <button onclick="switchAdminTab('chat')" id="adminTab-chat" class="admin-subtab px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center space-x-2">
+            <span class="material-symbols-outlined text-[18px]">security</span>
+            <span>Chat Moderation</span>
+          </button>
+        </div>
+
+        <!-- ADMIN TAB CONTENT 1: REDEMPTION REQUESTS -->
+        <div id="adminPanel-redemptions" class="admin-panel pt-4 space-y-4">
+          <!-- Summary Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-maroon/5 border border-maroon/20 p-4 rounded-xl">
+              <p class="text-xs font-semibold text-slate-500">Total Requests</p>
+              <p id="adminStatTotalRequests" class="text-2xl font-bold text-maroon">0</p>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+              <p class="text-xs font-semibold text-amber-700">Pending Review</p>
+              <p id="adminStatPendingRequests" class="text-2xl font-bold text-amber-600">0</p>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+              <p class="text-xs font-semibold text-emerald-700">Fulfilled & Handed Over</p>
+              <p id="adminStatFulfilledRequests" class="text-2xl font-bold text-emerald-600">0</p>
+            </div>
+          </div>
+
+          <!-- Filter & Search Bar -->
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input type="text" id="adminRedemptionSearchInput" oninput="renderAdminRedemptions()" placeholder="Search by student name, email, or item..." class="flex-1 px-4 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-maroon focus:outline-none" />
+            <div class="flex gap-2">
+              <button onclick="setAdminRedemptionFilter('All')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-maroon text-white">All</button>
+              <button onclick="setAdminRedemptionFilter('Pending')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Pending</button>
+              <button onclick="setAdminRedemptionFilter('Approved')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Approved</button>
+              <button onclick="setAdminRedemptionFilter('Fulfilled')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Fulfilled</button>
+              <button onclick="setAdminRedemptionFilter('Rejected')" class="admin-red-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">Rejected</button>
+            </div>
+          </div>
+
+          <!-- Redemptions List -->
+          <div id="adminRedemptionsListContainer" class="space-y-3">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- ADMIN TAB CONTENT 2: USERS -->
+        <div id="adminPanel-users" class="admin-panel hidden pt-4 space-y-4">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px]">
+                <tr>
+                  <th class="p-3">Student Name</th>
+                  <th class="p-3">Email</th>
+                  <th class="p-3">Role</th>
+                  <th class="p-3">Stream</th>
+                  <th class="p-3">SP Points</th>
+                  <th class="p-3">Status</th>
+                  <th class="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTableBody" class="divide-y divide-slate-100">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ADMIN TAB CONTENT 3: CHAT MODERATION -->
+        <div id="adminPanel-chat" class="admin-panel hidden pt-4 space-y-4">
+          <p class="text-xs text-slate-500">Live monitoring of discussions. Click delete to instantly remove any non-academic messages.</p>
+          <div id="adminChatAuditBox" class="space-y-2 max-h-96 overflow-y-auto">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-maroon-dark text-slate-300 text-xs py-8 border-t-2 border-gold/40 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4 text-center sm:text-left">
+      <div class="flex items-center space-x-3">
+        <img src="/logo.jpg" alt="Zahira Crest" class="w-8 h-8 rounded-full border border-gold" />
+        <div>
+          <p class="font-bold text-white">Zahira College Mawanella Science Portal (ZSP - 28)</p>
+          <p class="text-[11px] text-slate-400">Discipline • Dynamism • Dexterity</p>
+        </div>
+      </div>
+      <div class="text-slate-400 text-[11px]">
+        Hosted on Vercel • Synced with Firebase RTDB (e-learing-9adc3)
+      </div>
+    </div>
+  </footer>
+
+  <!-- AUTHENTICATION MODAL -->
+  <div id="loginModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center space-x-2">
+          <img src="/logo.jpg" alt="Logo" class="w-8 h-8 rounded-full border border-gold" />
+          <h3 class="text-lg font-bold text-maroon">ZSP - 28 Portal Login</h3>
+        </div>
+        <button onclick="closeLoginModal()" class="text-slate-400 hover:text-slate-700">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form onsubmit="handleAuthSubmit(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Email Address</label>
+          <input type="email" id="loginEmail" value="mnmjaasim@gmail.com" required class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+          <input type="password" id="loginPassword" value="mnmjaasim2010" required class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-maroon" />
+        </div>
+        <div class="flex items-center justify-between text-xs text-slate-600">
+          <label class="flex items-center space-x-1 cursor-pointer">
+            <input type="checkbox" checked class="rounded text-maroon" />
+            <span>Keep me signed in</span>
+          </label>
+          <span class="text-maroon font-semibold">Administrator Role</span>
+        </div>
+        <button type="submit" class="w-full bg-maroon hover:bg-maroon-dark text-white font-bold py-2.5 rounded-xl shadow text-sm transition">
+          Sign In to Portal
+        </button>
+      </form>
+
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+        <p class="font-bold text-slate-700">Quick Test Accounts:</p>
+        <p>• <strong>Admin:</strong> mnmjaasim@gmail.com / mnmjaasim2010</p>
+        <p>• <strong>Student:</strong> ahamad.rizvi@zahira.lk / zahira2028</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION JAVASCRIPT LOGIC -->
+  <script src="/app.js"></script>
+</body>
+</html>
