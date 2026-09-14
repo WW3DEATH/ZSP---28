@@ -33,15 +33,8 @@ try {
 
 // Global Application State
 const STATE = {
-  currentUser: {
-    id: "admin_jasim",
-    fullName: "M.N.M. Jaasim",
-    email: "mnmjaasim@gmail.com",
-    role: "ADMIN",
-    stream: "General Science", // Admins and teachers have all-access
-    spPoints: 450,
-    isVerified: true
-  },
+  // Whenever the website is opened, all accounts start signed out by default
+  currentUser: null,
   currentView: "home",
   adminSubTab: "users",
   adminRedemptionFilter: "All",
@@ -188,7 +181,30 @@ document.addEventListener("DOMContentLoaded", () => {
   setupFirebaseRealtime();
 });
 
+// Admin Privileges Helper: strictly restricts the Admin Panel & editing features
+function isCurrentUserAdmin() {
+  return !!(
+    STATE.currentUser &&
+    (STATE.currentUser.role === 'ADMIN' || (STATE.currentUser.email && STATE.currentUser.email.toLowerCase() === 'mnmjaasim@gmail.com'))
+  );
+}
+
+function requireAdmin() {
+  if (!isCurrentUserAdmin()) {
+    showToast("🔒 Access Denied: Only the Administrator can access this section or edit items.");
+    return false;
+  }
+  return true;
+}
+
 function initApp() {
+  // Enforce logged-out state whenever the website is opened
+  STATE.currentUser = null;
+  try {
+    localStorage.removeItem("zsp_current_user");
+    sessionStorage.clear();
+  } catch (e) {}
+
   renderAuthHeader();
   renderHomeSubjects();
   renderPhysicsUnitCards();
@@ -213,6 +229,29 @@ function initApp() {
 // ROUTING
 // ----------------------------------------------------
 function navigateTo(viewId) {
+  // Strict guard: only administrator can open the Admin Panel
+  if (viewId === "admin") {
+    if (!isCurrentUserAdmin()) {
+      showToast("🔒 Access Denied: Only the Administrator can access the Admin Panel.");
+      if (!STATE.currentUser) {
+        openLoginModal();
+      } else {
+        navigateTo("home");
+      }
+      return;
+    }
+  }
+
+  // Profile guard: must be signed in
+  if (viewId === "profile") {
+    if (!STATE.currentUser) {
+      showToast("Please sign in to view your profile.");
+      openLoginModal();
+      return;
+    }
+    renderProfileView();
+  }
+
   STATE.currentView = viewId;
   document.querySelectorAll(".app-view").forEach(el => el.classList.add("hidden"));
   const target = document.getElementById("view-" + viewId);
@@ -234,11 +273,6 @@ function navigateTo(viewId) {
     setupDiscussionViewPermissions();
   }
 
-  // If navigating to Profile, update profile view details
-  if (viewId === "profile") {
-    renderProfileView();
-  }
-
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -247,6 +281,13 @@ function navigateTo(viewId) {
 // ----------------------------------------------------
 function renderAuthHeader() {
   const container = document.getElementById("authHeaderControls");
+  const adminNavTab = document.getElementById("tab-admin");
+
+  // Only show the Admin Portal nav tab if the current user is an Admin
+  if (adminNavTab) {
+    adminNavTab.classList.toggle("hidden", !isCurrentUserAdmin());
+  }
+
   if (!container) return;
 
   if (STATE.currentUser) {
@@ -273,11 +314,11 @@ function renderAuthHeader() {
             <p class="text-xs font-bold text-slate-900 truncate">${STATE.currentUser.fullName}</p>
             <p class="text-[11px] text-slate-500 truncate">${STATE.currentUser.email}</p>
             <div class="flex items-center space-x-1 mt-1">
-              <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-maroon/10 text-maroon">${STATE.currentUser.role}</span>
+              <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${isCurrentUserAdmin() ? 'bg-maroon text-gold font-black' : 'bg-maroon/10 text-maroon'}">${STATE.currentUser.role}</span>
               ${STATE.currentUser.role === 'STUDENT' ? `
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">${STATE.currentUser.stream}</span>
               ` : `
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">All-Access</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Staff Access</span>
               `}
             </div>
           </div>
@@ -285,10 +326,10 @@ function renderAuthHeader() {
             <span class="material-symbols-outlined text-[18px] text-slate-500">account_circle</span>
             <span>My Profile</span>
           </button>
-          ${STATE.currentUser.role === 'ADMIN' ? `
-            <button onclick="closeUserDropdown(); navigateTo('admin');" class="w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center space-x-2">
-              <span class="material-symbols-outlined text-[18px] text-slate-500">shield_person</span>
-              <span>Admin Management</span>
+          ${isCurrentUserAdmin() ? `
+            <button onclick="closeUserDropdown(); navigateTo('admin');" class="w-full px-4 py-2 text-left text-xs font-bold text-maroon hover:bg-maroon/5 flex items-center space-x-2">
+              <span class="material-symbols-outlined text-[18px] text-maroon">shield_person</span>
+              <span>Administrator Panel</span>
             </button>
           ` : ''}
           <button onclick="handleLogout()" class="w-full px-4 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center space-x-2 border-t border-slate-100 mt-1">
@@ -326,9 +367,13 @@ function renderAuthHeader() {
     `;
 
     const homeStream = document.getElementById("homeUserStreamDisplay");
-    if (homeStream) homeStream.innerText = "Guest / Sign In";
+    if (homeStream) homeStream.innerText = "Guest (Sign In)";
     const homeSp = document.getElementById("homeUserSp");
     if (homeSp) homeSp.innerText = "0 SP";
+    const homeLevel = document.getElementById("homeUserLevelDisplay");
+    if (homeLevel) homeLevel.innerText = "Sign in to track";
+    const redSp = document.getElementById("redemptionUserPoints");
+    if (redSp) redSp.innerText = "0 SP";
   }
 }
 
@@ -421,13 +466,18 @@ function handleAuthSubmit(e) {
   if (authCurrentMode === 'signin') {
     // Check credentials against state
     let matchedUser = STATE.users.find(u => u.email.toLowerCase() === email);
-    if (!matchedUser) {
-      // Auto-create recognized demo account or allow access
-      if (email.includes("admin") || email === "mnmjaasim@gmail.com") {
+
+    // Strict Admin Authentication: only authorized admin email with proper password gets ADMIN privileges
+    if (email === "mnmjaasim@gmail.com") {
+      if (password !== "mnmjaasim2010" && password !== "admin123") {
+        showToast("⚠️ Incorrect Administrator Password. Please enter the correct admin password.");
+        return;
+      }
+      if (!matchedUser) {
         matchedUser = {
           id: "admin_jasim",
           fullName: "M.N.M. Jaasim",
-          email: email,
+          email: "mnmjaasim@gmail.com",
           role: "ADMIN",
           stream: "All Streams",
           spPoints: 450,
@@ -435,7 +485,12 @@ function handleAuthSubmit(e) {
         };
         STATE.users.unshift(matchedUser);
       } else {
-        // Fallback for general login
+        matchedUser.role = "ADMIN";
+        matchedUser.isVerified = true;
+      }
+    } else {
+      // General non-admin user login
+      if (!matchedUser) {
         matchedUser = {
           id: "usr_" + Math.random().toString(36).substring(2, 7),
           fullName: email.split("@")[0].toUpperCase(),
@@ -446,6 +501,8 @@ function handleAuthSubmit(e) {
           isVerified: true
         };
         STATE.users.push(matchedUser);
+      } else if (matchedUser.role === 'ADMIN' && matchedUser.email !== 'mnmjaasim@gmail.com') {
+        matchedUser.role = 'TEACHER'; // Prevent unauthorized admin roles
       }
     }
 
@@ -471,6 +528,13 @@ function handleAuthSubmit(e) {
       if (r.checked) role = r.value;
     }
 
+    // Role safety: Only mnmjaasim@gmail.com can ever have ADMIN role
+    if (email === "mnmjaasim@gmail.com") {
+      role = "ADMIN";
+    } else if (role === "ADMIN") {
+      role = "STUDENT";
+    }
+
     let stream = "All Streams";
     if (role === "STUDENT") {
       const streamRadios = document.getElementsByName("authStream");
@@ -480,13 +544,13 @@ function handleAuthSubmit(e) {
     }
 
     const newUser = {
-      id: (role === "TEACHER" ? "teacher_" : "student_") + Math.random().toString(36).substring(2, 7),
+      id: (role === "ADMIN" ? "admin_" : role === "TEACHER" ? "teacher_" : "student_") + Math.random().toString(36).substring(2, 7),
       fullName: fullName,
       email: email,
       role: role,
       stream: stream,
-      spPoints: (role === "TEACHER" ? 500 : 50),
-      isVerified: (role === "TEACHER")
+      spPoints: (role === "ADMIN" || role === "TEACHER" ? 500 : 50),
+      isVerified: (role === "ADMIN" || role === "TEACHER")
     };
 
     STATE.users.push(newUser);
@@ -1197,6 +1261,11 @@ function postChatMessage(e) {
 // ADMINISTRATOR PANEL (USERS, STORE, REDEMPTIONS, CHAT)
 // ----------------------------------------------------
 function switchAdminTab(tabKey) {
+  if (!requireAdmin()) {
+    navigateTo("home");
+    return;
+  }
+
   STATE.adminSubTab = tabKey;
   document.querySelectorAll(".admin-subtab").forEach(btn => {
     btn.classList.remove("bg-maroon", "text-white");
@@ -1219,6 +1288,7 @@ function switchAdminTab(tabKey) {
 
 // 1. User Management & Permanent Account Deletion
 function renderAdminUsers() {
+  if (!isCurrentUserAdmin()) return;
   const tbody = document.getElementById("adminUsersTableBody");
   if (!tbody) return;
 
@@ -1262,6 +1332,7 @@ function renderAdminUsers() {
 }
 
 function verifyUser(userId) {
+  if (!requireAdmin()) return;
   const u = STATE.users.find(user => user.id === userId);
   if (u) {
     u.isVerified = true;
@@ -1281,6 +1352,7 @@ function verifyUser(userId) {
 
 // Admin can permanently delete users
 function adminDeleteUser(userId) {
+  if (!requireAdmin()) return;
   const u = STATE.users.find(user => user.id === userId);
   if (!u) return;
 
@@ -1305,6 +1377,7 @@ function adminDeleteUser(userId) {
 
 // 2. Redemption Store Inventory Management (Add & Remove Items)
 function renderAdminStoreInventory() {
+  if (!isCurrentUserAdmin()) return;
   const container = document.getElementById("adminStoreItemsList");
   if (!container) return;
 
@@ -1331,6 +1404,8 @@ function renderAdminStoreInventory() {
 
 function handleAdminAddStoreItem(e) {
   e.preventDefault();
+  if (!requireAdmin()) return;
+
   const title = document.getElementById("newStoreTitle").value.trim();
   const category = document.getElementById("newStoreCategory").value;
   const spPrice = parseInt(document.getElementById("newStoreSpPrice").value, 10);
@@ -1371,6 +1446,7 @@ function handleAdminAddStoreItem(e) {
 }
 
 function adminRemoveStoreItem(itemId) {
+  if (!requireAdmin()) return;
   const item = STATE.redemptionItems.find(i => i.id === itemId);
   if (!item) return;
 
@@ -1483,6 +1559,8 @@ function renderAdminRedemptions() {
 }
 
 function updateRedemptionStatus(redemptionId, newStatus) {
+  if (!requireAdmin()) return;
+
   const red = STATE.redemptions.find(r => r.id === redemptionId);
   if (!red) return;
 
@@ -1517,6 +1595,7 @@ function updateRedemptionStatus(redemptionId, newStatus) {
 
 // 4. Chat Moderation across Both Streams
 function renderAdminChatAudit() {
+  if (!isCurrentUserAdmin()) return;
   const box = document.getElementById("adminChatAuditBox");
   if (!box) return;
 
@@ -1538,6 +1617,7 @@ function renderAdminChatAudit() {
 }
 
 function adminDeleteChatMessage(msgId) {
+  if (!requireAdmin()) return;
   STATE.messages = STATE.messages.filter(m => m.id !== msgId);
   if (db) {
     try {
@@ -1659,6 +1739,8 @@ function renderWednesdayPaperInfo() {
 }
 
 function adminForceReseedQuiz() {
+  if (!requireAdmin()) return;
+
   const newSeed = Math.floor(Math.random() * 89999999) + 10000000;
   const currentInfo = (typeof getActiveWednesdayInfo === "function")
     ? getActiveWednesdayInfo(STATE.adminSimulatedWednesdayDate)
@@ -1687,6 +1769,8 @@ function adminForceReseedQuiz() {
 }
 
 function adminAdvanceNextWednesday() {
+  if (!requireAdmin()) return;
+
   const baseDate = STATE.adminSimulatedWednesdayDate ? new Date(STATE.adminSimulatedWednesdayDate) : new Date();
   baseDate.setDate(baseDate.getDate() + 7);
   STATE.adminSimulatedWednesdayDate = baseDate;
@@ -1714,6 +1798,8 @@ function adminAdvanceNextWednesday() {
 }
 
 function adminResetCalendarWednesday() {
+  if (!requireAdmin()) return;
+
   STATE.adminSimulatedWednesdayDate = null;
   const newInfo = (typeof getActiveWednesdayInfo === "function")
     ? getActiveWednesdayInfo()
