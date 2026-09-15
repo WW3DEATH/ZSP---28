@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZSP - 28 | Zahira Science Portal</title>
-  <meta name="description" content="Official Zahira College Mawanella Science Portal for Grade 12 Physical & Bio Science with real-time quizzes, discussions, rewards redemption, and admin management." />
+  <title>ZNC Science | Zahira National College Science Portal</title>
+  <meta name="description" content="Official Zahira National College Mawanella Science Portal for Grade 12 Physical & Bio Science with real-time quizzes, discussions, rewards redemption, and admin management." />
   
   <!-- Browser Tab Icons & Favicons -->
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -97,10 +97,10 @@
         <img src="/logo.jpg" alt="Zahira Crest" class="w-10 h-10 rounded-full border-2 border-gold shadow-sm object-cover bg-white" />
         <div>
           <div class="flex items-center space-x-2">
-            <span class="font-extrabold tracking-wider text-gold text-lg">ZSP - 28</span>
+            <span class="font-extrabold tracking-wider text-gold text-lg">ZNC Science</span>
             <span class="text-xs bg-maroon-dark px-2 py-0.5 rounded text-gold-light border border-gold/40 hidden sm:inline-block">LIVE PORTAL</span>
           </div>
-          <p class="text-[11px] text-slate-200 tracking-wide">Zahira College Mawanella • Science Section</p>
+          <p class="text-[11px] text-slate-200 tracking-wide">Zahira National College Mawanella • Science Section</p>
         </div>
       </div>
 
@@ -132,7 +132,7 @@
         </button>
         <button onclick="navigateTo('leaderboard')" id="tab-leaderboard" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
           <span class="material-symbols-outlined text-[18px]">leaderboard</span>
-          <span>Leaderboard & Milestones</span>
+          <span>Weekly Leaderboard</span>
         </button>
         <button onclick="navigateTo('redemption')" id="tab-redemption" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
           <span class="material-symbols-outlined text-[18px]">card_giftcard</span>
@@ -141,6 +141,11 @@
         <button onclick="navigateTo('discussions')" id="tab-discussions" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
           <span class="material-symbols-outlined text-[18px]">forum</span>
           <span id="discussionsNavLabel">Discussions</span>
+        </button>
+        <button onclick="navigateTo('gemini')" id="tab-gemini" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
+          <span class="material-symbols-outlined text-[18px] text-amber-300 animate-pulse">auto_awesome</span>
+          <span>Gemini AI Tutor</span>
+          <span class="text-[9px] bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 font-black px-1.5 py-0.2 rounded-full">AI</span>
         </button>
         <button onclick="navigateTo('admin')" id="tab-admin" class="nav-tab hidden px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 text-slate-300 hover:text-white hover:bg-maroon/50">
           <span class="material-symbols-outlined text-[18px]">shield_person</span>
@@ -363,14 +368,17 @@
               </div>
               <h3 id="quizCurrentTitle" class="text-lg font-bold text-slate-900 mt-1">Question 1 of 100</h3>
             </div>
-            <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-3 sm:space-x-4">
               <div class="text-right">
                 <p class="text-xs text-slate-500">Question Progress</p>
                 <p id="quizProgressCount" class="text-sm font-bold text-slate-800">1 / 100</p>
               </div>
-              <div class="text-right">
-                <p class="text-xs text-slate-500">Time Remaining</p>
-                <p id="quizTimerDisplay" class="text-lg font-mono font-bold text-maroon">60:00</p>
+              <div id="quizTimerWrapper" class="text-right px-3 py-1.5 rounded-xl border border-slate-200 transition-all duration-300">
+                <p id="quizTimerLabel" class="text-[11px] font-semibold text-slate-500 flex items-center justify-end space-x-1">
+                  <span class="material-symbols-outlined text-[13px]">timer</span>
+                  <span>Time Remaining</span>
+                </p>
+                <p id="quizTimerDisplay" class="text-lg font-mono font-bold text-maroon transition-colors duration-300">60:00</p>
               </div>
             </div>
           </div>
@@ -383,11 +391,17 @@
             </div>
           </div>
 
-          <div class="flex justify-between items-center pt-2">
-            <button onclick="abandonQuiz()" class="text-xs text-slate-500 hover:text-red-600 font-semibold flex items-center space-x-1">
-              <span class="material-symbols-outlined text-[16px]">close</span>
-              <span>Quit / Abandon</span>
-            </button>
+          <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+            <div class="flex items-center space-x-3">
+              <button onclick="abandonQuiz()" class="text-xs text-slate-500 hover:text-red-600 font-semibold flex items-center space-x-1">
+                <span class="material-symbols-outlined text-[16px]">close</span>
+                <span>Quit / Abandon</span>
+              </button>
+              <button onclick="askGeminiAboutQuizQuestion()" class="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 transition">
+                <span class="material-symbols-outlined text-[16px] text-amber-500">auto_awesome</span>
+                <span>Ask Gemini AI Concept Hint</span>
+              </button>
+            </div>
             <button onclick="submitQuizAnswer()" id="btnSubmitQuiz" class="bg-maroon hover:bg-maroon-dark text-white px-7 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center space-x-1.5">
               <span>Submit & Next Question</span>
               <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
@@ -418,15 +432,21 @@
         </div>
       </div>
 
-      <!-- General Science Rankings (Whole Student Community) -->
+      <!-- Weekly Leaderboard (Top 10 Science Scholars of the Active Week) -->
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
           <div>
-            <h2 class="text-xl font-bold text-slate-800">Science Scholars Ranking & SP Points</h2>
-            <p class="text-xs text-slate-500">Complete student standings based on verified Science Points (SP)</p>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-xl font-bold text-slate-800">Weekly Leaderboard</h2>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-gold/20 text-gold-dark border border-gold/40">Top 10 Scholars</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Top 10 students for the active exam week based on points earned from the Wednesday Quiz and curriculum units. Resets every Wednesday night.</p>
           </div>
           <div class="flex items-center space-x-2">
-            <span class="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1 rounded-full">All Students Ranked</span>
+            <span id="weeklyLeaderboardBadge" class="text-xs bg-maroon/10 text-maroon border border-maroon/20 font-bold px-3 py-1 rounded-full flex items-center space-x-1.5 shadow-sm">
+              <span class="material-symbols-outlined text-[15px]">event_repeat</span>
+              <span id="weeklyLeaderboardDateDisplay">Active Week: Wednesday Cycle</span>
+            </span>
           </div>
         </div>
 
@@ -434,11 +454,12 @@
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px]">
               <tr>
-                <th class="p-3">Rank</th>
+                <th class="p-3">Weekly Rank</th>
                 <th class="p-3">Student Name</th>
                 <th class="p-3">Role & Stream</th>
                 <th class="p-3">Milestone Tier</th>
-                <th class="p-3">Total SP Points</th>
+                <th class="p-3 text-emerald-700 font-black">Weekly SP Earned</th>
+                <th class="p-3 text-slate-600">Total SP Balance</th>
                 <th class="p-3 text-right">Status</th>
               </tr>
             </thead>
@@ -836,7 +857,144 @@
       </div>
     </section>
 
+    <!-- VIEW 8: GEMINI AI ACADEMIC TUTOR -->
+    <section id="view-gemini" class="app-view hidden space-y-4">
+      <!-- Gemini Chat Card -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-190px)] min-h-[580px]">
+        
+        <!-- Header Controls -->
+        <div class="bg-gradient-to-r from-maroon via-maroon-dark to-purple-950 text-white p-4 sm:px-6 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gold/30">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-md flex items-center justify-center shrink-0">
+              <div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+                <span class="material-symbols-outlined text-amber-300 text-xl animate-pulse">auto_awesome</span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="font-extrabold text-base sm:text-lg tracking-tight text-white">Gemini AI Academic Tutor</h2>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live A/L AI
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-300">Zahira National College Science Section • Multi-Turn Academic Assistant</p>
+            </div>
+          </div>
+
+          <!-- Controls: Role Selector + Model Selector + Action Buttons -->
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Tutor Role Selector -->
+            <div class="flex items-center space-x-1.5 bg-black/30 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-white/10">
+              <span class="material-symbols-outlined text-[16px] text-amber-300">psychology</span>
+              <label for="geminiRoleSelect" class="text-[10px] font-bold text-slate-300 uppercase tracking-wider hidden sm:inline">Role:</label>
+              <select id="geminiRoleSelect" onchange="onGeminiRoleChange(this.value)" class="bg-slate-900 text-amber-200 text-xs font-semibold rounded-lg px-2 py-1 border border-amber-500/30 focus:outline-none focus:ring-1 focus:ring-amber-400">
+                <option value="general">🔬 All-Round A/L Science Mentor</option>
+                <option value="physics">⚡ Physics Problem Solver</option>
+                <option value="maths">📐 Combined Maths Specialist</option>
+                <option value="chemistry">🧪 Chemistry Master</option>
+                <option value="biology">🧬 Biology Resource Book Expert</option>
+              </select>
+            </div>
+
+            <!-- Model Selector (per instructions: gemini-3.1-pro-preview for complex, gemini-3.5-flash for general, gemini-3.1-flash-lite for fast, gemini-3.8-flash) -->
+            <div class="flex items-center space-x-1.5 bg-black/30 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-white/10">
+              <span class="material-symbols-outlined text-[16px] text-amber-300">memory</span>
+              <label for="geminiModelSelect" class="text-[10px] font-bold text-slate-300 uppercase tracking-wider hidden sm:inline">Model:</label>
+              <select id="geminiModelSelect" onchange="onGeminiModelChange(this.value)" class="bg-slate-900 text-emerald-300 text-xs font-semibold rounded-lg px-2 py-1 border border-emerald-500/30 focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash (General Tasks)</option>
+                <option value="gemini-3.8-flash">🧠 Gemini 3.8 Flash (High Reasoning)</option>
+                <option value="gemini-3.1-pro-preview">🔬 Gemini 3.1 Pro (Complex Tasks & Proofs)</option>
+                <option value="gemini-3.1-flash-lite">🚀 Gemini 3.1 Flash-Lite (Fast Q&A)</option>
+              </select>
+            </div>
+
+            <!-- Clear & Export Buttons -->
+            <div class="flex items-center space-x-1">
+              <button onclick="clearGeminiChat()" title="Clear conversation history" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition flex items-center">
+                <span class="material-symbols-outlined text-[18px]">delete_sweep</span>
+              </button>
+              <button onclick="exportGeminiChat()" title="Export notes to clipboard" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition flex items-center">
+                <span class="material-symbols-outlined text-[18px]">download</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scrollable Conversation Thread -->
+        <div id="geminiChatMessagesContainer" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/50">
+          <div id="geminiChatMessages" class="space-y-4 max-w-4xl mx-auto">
+            <!-- Messages rendered dynamically via JavaScript -->
+          </div>
+        </div>
+
+        <!-- Quick Prompt Chips -->
+        <div class="px-4 py-2 bg-slate-100/90 border-t border-slate-200 overflow-x-auto flex items-center space-x-2 no-scrollbar">
+          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <span class="material-symbols-outlined text-[14px] text-amber-500">tips_and_updates</span> Prompts:
+          </span>
+          <button onclick="sendQuickGeminiPrompt('Explain Bernoulli\\'s Principle in fluid dynamics with formula, SI units and Sri Lankan A/L past paper applications.')" class="text-xs bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-700 px-3 py-1 rounded-full whitespace-nowrap transition shadow-2xs font-medium">
+            ⚡ Bernoulli's Equation Derivation
+          </button>
+          <button onclick="sendQuickGeminiPrompt('Explain how to solve quadratic equations with complex conjugate roots with step-by-step example in Combined Maths.')" class="text-xs bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-700 px-3 py-1 rounded-full whitespace-nowrap transition shadow-2xs font-medium">
+            📐 Complex Numbers & Quadratics
+          </button>
+          <button onclick="sendQuickGeminiPrompt('Explain Le Chatelier\\'s Principle regarding temperature and pressure changes with the Haber process reaction.')" class="text-xs bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-700 px-3 py-1 rounded-full whitespace-nowrap transition shadow-2xs font-medium">
+            🧪 Le Chatelier's Principle (Haber)
+          </button>
+          <button onclick="sendQuickGeminiPrompt('Summarize the key differences between C3 and C4 plants in A/L Biology with Kranz anatomy.')" class="text-xs bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-700 px-3 py-1 rounded-full whitespace-nowrap transition shadow-2xs font-medium">
+            🧬 C3 vs C4 Plants (Kranz Anatomy)
+          </button>
+          <button onclick="sendQuickGeminiPrompt('What are the best strategies to manage time during the Sri Lankan A/L Physics 50-MCQ Paper 1 (2 hours)?')" class="text-xs bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-700 px-3 py-1 rounded-full whitespace-nowrap transition shadow-2xs font-medium">
+            ⏱️ Physics Paper 1 Time Strategy
+          </button>
+        </div>
+
+        <!-- Chat Input Form -->
+        <div class="p-3 sm:p-4 bg-white border-t border-slate-200">
+          <form onsubmit="handleGeminiFormSubmit(event)" class="max-w-4xl mx-auto flex items-end gap-2">
+            <div class="relative flex-1">
+              <textarea
+                id="geminiChatInput"
+                rows="2"
+                onkeydown="handleGeminiInputKeyDown(event)"
+                placeholder="Ask any syllabus question, formula derivation, past paper problem, or science concept... (Press Enter to send, Shift+Enter for new line)"
+                class="w-full px-4 py-2.5 text-sm text-slate-800 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-maroon focus:border-transparent resize-none leading-relaxed"
+              ></textarea>
+            </div>
+            <button
+              type="submit"
+              id="btnGeminiSend"
+              class="px-5 py-2.5 bg-gradient-to-r from-maroon to-maroon-dark hover:from-maroon-dark hover:to-maroon text-white font-bold rounded-xl shadow-md hover:shadow-lg transition flex items-center space-x-1.5 shrink-0 h-[46px]"
+            >
+              <span id="geminiSendIcon" class="material-symbols-outlined text-[18px]">send</span>
+              <span id="geminiSendText" class="text-xs font-bold">Send</span>
+            </button>
+          </form>
+          <div class="max-w-4xl mx-auto mt-2 flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <span class="flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Multi-turn conversation history is preserved across queries.
+            </span>
+            <span class="hidden sm:inline">Active Role: <strong id="activeRoleLabel" class="text-slate-600 font-semibold">General Science Mentor</strong></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
+
+  <!-- FLOATING GEMINI CHATBOT LAUNCHER BUTTON -->
+  <div id="floatingGeminiButton" class="fixed bottom-6 right-6 z-40">
+    <button onclick="openGeminiChatQuick()" class="group relative flex items-center bg-gradient-to-r from-maroon via-maroon-dark to-purple-950 text-white p-3.5 sm:px-4 sm:py-3 rounded-full shadow-2xl hover:shadow-gold/30 hover:scale-105 border-2 border-gold/60 transition-all duration-300">
+      <span class="material-symbols-outlined text-2xl text-amber-300 group-hover:rotate-12 transition-transform duration-300">auto_awesome</span>
+      <span class="hidden sm:inline-block ml-2 text-xs font-bold tracking-wide">Ask Gemini AI</span>
+      <span class="absolute -top-1 -right-1 flex h-3 w-3">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+      </span>
+    </button>
+  </div>
 
   <!-- FOOTER -->
   <footer class="bg-maroon-dark text-slate-300 text-xs py-8 border-t-2 border-gold/40 mt-auto">
@@ -844,7 +1002,7 @@
       <div class="flex items-center space-x-3">
         <img src="/logo.jpg" alt="Zahira Crest" class="w-8 h-8 rounded-full border border-gold" />
         <div>
-          <p class="font-bold text-white">Zahira College Mawanella Science Portal (ZSP - 28)</p>
+          <p class="font-bold text-white">Zahira National College Science Portal (ZNC Science)</p>
           <p class="text-[11px] text-slate-400">Discipline • Dynamism • Dexterity</p>
         </div>
       </div>
@@ -860,7 +1018,7 @@
       <div class="flex items-center justify-between border-b pb-3">
         <div class="flex items-center space-x-2">
           <img src="/logo.jpg" alt="Logo" class="w-8 h-8 rounded-full border border-gold" />
-          <h3 id="authModalTitle" class="text-lg font-bold text-maroon">Sign In to ZSP - 28</h3>
+          <h3 id="authModalTitle" class="text-lg font-bold text-maroon">Sign In to ZNC Science</h3>
         </div>
         <button onclick="closeLoginModal()" class="text-slate-400 hover:text-slate-700">
           <span class="material-symbols-outlined">close</span>

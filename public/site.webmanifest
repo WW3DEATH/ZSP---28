@@ -1,7 +1,7 @@
 {
-  "name": "ZSP - 28 | Zahira Science Portal",
-  "short_name": "ZSP 28",
-  "description": "Zahira College Mawanella Science Portal for Grade 12 Physical & Bio Science",
+  "name": "ZNC Science 2028 | Zahira College Science",
+  "short_name": "ZNC Science",
+  "description": "Zahira National College Science Portal for Grade 12 Physical & Bio Science",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#580A18",

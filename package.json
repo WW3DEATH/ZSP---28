@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Zahira Science Portal & Student Platform for Grade 12 Physical and Bio Science with real-time discussions, syllabus quizzes, redemption rewards, and admin management.",
   "scripts": {
-    "start": "npx serve public"
+    "start": "node server.js"
   },
   "keywords": [
     "zahira",

@@ -1,5 +1,5 @@
 /**
- * ZSP - 28 (Zahira Science Portal) Web Application
+ * ZNC Science (Zahira National College Science Portal) Web Application
  * Connected to Firebase Realtime Database: e-learing-9adc3
  */
 
@@ -86,8 +86,8 @@ const STATE = {
     },
     {
       id: "item_4",
-      title: "ZSP-28 Science Scholar Lapel Badge & Certificate",
-      description: "Official Zahira College Mawanella Science Section academic badge & faculty commendation certificate.",
+      title: "ZNC Science Scholar Lapel Badge & Certificate",
+      description: "Official Zahira National College Science Section academic badge & faculty commendation certificate.",
       category: "Awards",
       spPrice: 80,
       stock: 25
@@ -124,7 +124,15 @@ const STATE = {
   selectedAnswerIdx: null,
   activeQuizScore: 0,
   quizTimerInterval: null,
-  quizSecondsRemaining: 3600
+  quizSecondsRemaining: 3600,
+
+  // Gemini Multi-Turn AI Tutor State
+  gemini: {
+    model: "gemini-3.5-flash",
+    role: "general",
+    isLoading: false,
+    history: []
+  }
 };
 
 // INITIALIZATION
@@ -149,15 +157,65 @@ function requireAdmin() {
   return true;
 }
 
-function initApp() {
-  // Support "Keep me signed in" option: restore session only if saved by user choice
+// Synchronize and persist users and active session to localStorage
+function saveUsersAndSession() {
   try {
-    const savedUserStr = localStorage.getItem("zsp_current_user");
+    if (STATE.currentUser) {
+      const idx = STATE.users.findIndex(u => u.id === STATE.currentUser.id || (u.email && STATE.currentUser.email && u.email.toLowerCase() === STATE.currentUser.email.toLowerCase()));
+      if (idx >= 0) {
+        STATE.users[idx] = { ...STATE.users[idx], ...STATE.currentUser };
+      } else {
+        STATE.users.push(STATE.currentUser);
+      }
+    }
+    // Persist all registered users
+    localStorage.setItem("znc_registered_users", JSON.stringify(STATE.users));
+
+    // Persist active user session if user kept signed in
+    const isRemembered = localStorage.getItem("znc_current_user") || localStorage.getItem("zsp_current_user");
+    if (isRemembered && STATE.currentUser) {
+      localStorage.setItem("znc_current_user", JSON.stringify(STATE.currentUser));
+    }
+  } catch (e) {
+    console.warn("Save users error:", e);
+  }
+}
+
+function initApp() {
+  // 1. Restore registered users from localStorage to keep balances and accounts persisted across refreshes
+  try {
+    const savedUsersStr = localStorage.getItem("znc_registered_users");
+    if (savedUsersStr) {
+      const parsedUsers = JSON.parse(savedUsersStr);
+      if (Array.isArray(parsedUsers) && parsedUsers.length > 0) {
+        parsedUsers.forEach(pu => {
+          if (!pu || !pu.id) return;
+          const idx = STATE.users.findIndex(u => u.id === pu.id || (u.email && pu.email && u.email.toLowerCase() === pu.email.toLowerCase()));
+          if (idx >= 0) {
+            STATE.users[idx] = { ...STATE.users[idx], ...pu };
+          } else {
+            STATE.users.push(pu);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("User registry restore error:", e);
+  }
+
+  // 2. Support "Keep me signed in" option: restore session only if saved by user choice
+  try {
+    const savedUserStr = localStorage.getItem("znc_current_user") || localStorage.getItem("zsp_current_user");
     if (savedUserStr) {
       const savedUser = JSON.parse(savedUserStr);
       if (savedUser && savedUser.id) {
         const found = STATE.users.find(u => u.id === savedUser.id || (u.email && savedUser.email && u.email.toLowerCase() === savedUser.email.toLowerCase()));
-        STATE.currentUser = found || savedUser;
+        if (found) {
+          STATE.currentUser = found;
+        } else {
+          STATE.currentUser = savedUser;
+          STATE.users.push(savedUser);
+        }
       } else {
         STATE.currentUser = null;
       }
@@ -183,6 +241,7 @@ function initApp() {
   renderAdminChatAudit();
   renderWednesdayPaperInfo();
   updateBadgeCounts();
+  initGeminiChat();
 
   // Periodic check of Wednesday 8-10 PM window
   setInterval(checkWednesdayQuizWindow, 15000);
@@ -234,6 +293,15 @@ function navigateTo(viewId) {
   // If navigating to Discussions, apply stream permissions
   if (viewId === "discussions") {
     setupDiscussionViewPermissions();
+  }
+
+  // If navigating to Gemini AI Tutor, render chat and focus input
+  if (viewId === "gemini") {
+    renderGeminiChat();
+    setTimeout(() => {
+      const input = document.getElementById("geminiChatInput");
+      if (input) input.focus();
+    }, 150);
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -444,6 +512,7 @@ function handleAuthSubmit(e) {
           role: "ADMIN",
           stream: "All Streams",
           spPoints: 450,
+          weeklySp: 0,
           isVerified: true
         };
         STATE.users.unshift(matchedUser);
@@ -460,7 +529,8 @@ function handleAuthSubmit(e) {
           email: email,
           role: "STUDENT",
           stream: "Physical Science",
-          spPoints: 100,
+          spPoints: 50,
+          weeklySp: 0,
           isVerified: true
         };
         STATE.users.push(matchedUser);
@@ -475,11 +545,14 @@ function handleAuthSubmit(e) {
     const keepSignedIn = document.getElementById("authKeepSignedIn")?.checked;
     try {
       if (keepSignedIn) {
-        localStorage.setItem("zsp_current_user", JSON.stringify(matchedUser));
+        localStorage.setItem("znc_current_user", JSON.stringify(matchedUser));
       } else {
+        localStorage.removeItem("znc_current_user");
         localStorage.removeItem("zsp_current_user");
       }
     } catch (e) {}
+
+    saveUsersAndSession();
 
     closeLoginModal();
     renderAuthHeader();
@@ -523,7 +596,8 @@ function handleAuthSubmit(e) {
       email: email,
       role: role,
       stream: stream,
-      spPoints: (role === "ADMIN" || role === "TEACHER" ? 500 : 50),
+      spPoints: (role === "ADMIN" ? 450 : role === "TEACHER" ? 100 : 50),
+      weeklySp: 0,
       isVerified: (role === "ADMIN" || role === "TEACHER")
     };
 
@@ -534,11 +608,14 @@ function handleAuthSubmit(e) {
     const keepSignedIn = document.getElementById("authKeepSignedIn")?.checked;
     try {
       if (keepSignedIn) {
-        localStorage.setItem("zsp_current_user", JSON.stringify(newUser));
+        localStorage.setItem("znc_current_user", JSON.stringify(newUser));
       } else {
+        localStorage.removeItem("znc_current_user");
         localStorage.removeItem("zsp_current_user");
       }
     } catch (e) {}
+
+    saveUsersAndSession();
 
     // Sync user to Firebase
     if (db) {
@@ -563,6 +640,7 @@ function handleLogout() {
   closeUserDropdown();
   STATE.currentUser = null;
   try {
+    localStorage.removeItem("znc_current_user");
     localStorage.removeItem("zsp_current_user");
     sessionStorage.clear();
   } catch (e) {}
@@ -866,8 +944,21 @@ function finishQuizAndAwardMilestones() {
   const score = STATE.activeQuizScore;
   const earnedSp = Math.round((score / totalQ) * 100);
 
-  // Award SP points
-  STATE.currentUser.spPoints += earnedSp;
+  // Award SP points to lifetime balance
+  STATE.currentUser.spPoints = (Number(STATE.currentUser.spPoints) || 0) + earnedSp;
+
+  // Track Weekly SP points for the active exam week (Wednesday cycle)
+  const activeWeekKey = (STATE.wednesdayConfig && STATE.wednesdayConfig.paperCode) 
+    ? STATE.wednesdayConfig.paperCode 
+    : "WED-20260916";
+  if (!STATE.currentUser.weeklyScores) {
+    STATE.currentUser.weeklyScores = {};
+  }
+  STATE.currentUser.weeklyScores[activeWeekKey] = (Number(STATE.currentUser.weeklyScores[activeWeekKey]) || 0) + earnedSp;
+  STATE.currentUser.weeklySp = STATE.currentUser.weeklyScores[activeWeekKey];
+
+  // Persist user points & weekly scores so they never revert on page refresh!
+  saveUsersAndSession();
 
   // Check milestone level up
   const milestone = getMilestoneForSp(STATE.currentUser.spPoints);
@@ -879,12 +970,15 @@ function finishQuizAndAwardMilestones() {
         userId: STATE.currentUser.id,
         userName: STATE.currentUser.fullName,
         unitId: STATE.activeQuiz.unitId,
+        paperCode: STATE.activeQuiz.paperCode,
         score: score,
         total: totalQ,
         earnedSp: earnedSp,
         timestamp: Date.now()
       });
       db.ref("users/" + STATE.currentUser.id + "/spPoints").set(STATE.currentUser.spPoints);
+      db.ref("users/" + STATE.currentUser.id + "/weeklySp").set(STATE.currentUser.weeklySp);
+      db.ref("users/" + STATE.currentUser.id + "/weeklyScores/" + activeWeekKey).set(STATE.currentUser.weeklySp);
     } catch (e) {
       console.warn("RTDB quiz sync error:", e);
     }
@@ -894,7 +988,7 @@ function finishQuizAndAwardMilestones() {
   renderLeaderboard();
   renderMilestones();
 
-  showToast(`🎉 Exam Completed! Score: ${score}/${totalQ}. You earned ${earnedSp} SP Points! Current Level: ${milestone.current.name}`);
+  showToast(`🎉 Exam Completed! Score: ${score}/${totalQ}. You earned +${earnedSp} SP! (Weekly Total: ${STATE.currentUser.weeklySp} SP)`);
   abandonQuiz();
 }
 
@@ -903,11 +997,48 @@ function abandonQuiz() {
   STATE.activeQuiz = null;
   const runner = document.getElementById("activeQuizRunner");
   if (runner) runner.classList.add("hidden");
+
+  // Reset timer visual state
+  const timerDisplay = document.getElementById("quizTimerDisplay");
+  const timerWrapper = document.getElementById("quizTimerWrapper");
+  const timerLabel = document.getElementById("quizTimerLabel");
+  if (timerDisplay) {
+    timerDisplay.classList.remove("text-red-600", "animate-pulse", "font-black");
+    timerDisplay.classList.add("text-maroon", "font-bold");
+  }
+  if (timerWrapper) {
+    timerWrapper.classList.remove("bg-red-50", "border-red-400", "ring-2", "ring-red-400", "animate-pulse");
+    timerWrapper.classList.add("border-slate-200");
+  }
+  if (timerLabel) {
+    timerLabel.classList.remove("text-red-600", "font-bold");
+    timerLabel.classList.add("text-slate-500");
+    timerLabel.innerHTML = `<span class="material-symbols-outlined text-[13px]">timer</span><span>Time Remaining</span>`;
+  }
 }
 
 function startQuizTimer() {
   clearInterval(STATE.quizTimerInterval);
   const timerDisplay = document.getElementById("quizTimerDisplay");
+  const timerWrapper = document.getElementById("quizTimerWrapper");
+  const timerLabel = document.getElementById("quizTimerLabel");
+
+  // Reset to standard appearance
+  if (timerDisplay) {
+    timerDisplay.classList.remove("text-red-600", "animate-pulse", "font-black");
+    timerDisplay.classList.add("text-maroon", "font-bold");
+  }
+  if (timerWrapper) {
+    timerWrapper.classList.remove("bg-red-50", "border-red-400", "ring-2", "ring-red-400", "animate-pulse");
+    timerWrapper.classList.add("border-slate-200");
+  }
+  if (timerLabel) {
+    timerLabel.classList.remove("text-red-600", "font-bold");
+    timerLabel.classList.add("text-slate-500");
+    timerLabel.innerHTML = `<span class="material-symbols-outlined text-[13px]">timer</span><span>Time Remaining</span>`;
+  }
+
+  let urgencyAlertFired = false;
 
   STATE.quizTimerInterval = setInterval(() => {
     STATE.quizSecondsRemaining--;
@@ -922,6 +1053,27 @@ function startQuizTimer() {
     const secs = STATE.quizSecondsRemaining % 60;
     if (timerDisplay) {
       timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // URGENCY FEEDBACK: Timer text turns red and pulses when < 5 minutes (300 seconds) remaining
+    if (STATE.quizSecondsRemaining < 300) {
+      if (timerDisplay && !timerDisplay.classList.contains("text-red-600")) {
+        timerDisplay.classList.remove("text-maroon");
+        timerDisplay.classList.add("text-red-600", "animate-pulse", "font-black");
+      }
+      if (timerWrapper && !timerWrapper.classList.contains("border-red-400")) {
+        timerWrapper.classList.remove("border-slate-200");
+        timerWrapper.classList.add("bg-red-50", "border-red-400", "ring-2", "ring-red-400", "animate-pulse");
+      }
+      if (timerLabel && !timerLabel.classList.contains("text-red-600")) {
+        timerLabel.classList.remove("text-slate-500");
+        timerLabel.classList.add("text-red-600", "font-bold");
+        timerLabel.innerHTML = `<span class="material-symbols-outlined text-[13px] animate-bounce">warning</span><span>⚠️ Final 5 Minutes!</span>`;
+      }
+      if (!urgencyAlertFired) {
+        urgencyAlertFired = true;
+        showToast("⚠️ Urgency Warning: Less than 5 minutes remaining in the quiz!");
+      }
     }
   }, 1000);
 }
@@ -960,15 +1112,46 @@ function renderMilestones() {
   }).join("");
 }
 
-// User requested to REMOVE top 10 restriction in leaderboard, showing full ranking
+// Weekly Leaderboard: Shows Top 10 students for the active exam week based on points earned from Wednesday Quiz and units
 function renderLeaderboard() {
   const tbody = document.getElementById("leaderboardTableBody");
   if (!tbody) return;
 
-  const sorted = [...STATE.users].sort((a, b) => b.spPoints - a.spPoints);
+  const activeWeekCode = (STATE.wednesdayConfig && STATE.wednesdayConfig.paperCode) 
+    ? STATE.wednesdayConfig.paperCode 
+    : "WED-20260916";
 
-  tbody.innerHTML = sorted.map((u, i) => {
+  const dateDisplay = document.getElementById("weeklyLeaderboardDateDisplay");
+  if (dateDisplay) {
+    dateDisplay.innerText = `Active Week: ${STATE.wednesdayConfig.formattedDate || activeWeekCode}`;
+  }
+
+  // Sort users by their weekly score in the active exam week, with lifetime SP as tie-breaker
+  const sorted = [...STATE.users].sort((a, b) => {
+    const wA = (a.weeklyScores && a.weeklyScores[activeWeekCode] !== undefined) 
+      ? Number(a.weeklyScores[activeWeekCode]) 
+      : (Number(a.weeklySp) || 0);
+    const wB = (b.weeklyScores && b.weeklyScores[activeWeekCode] !== undefined) 
+      ? Number(b.weeklyScores[activeWeekCode]) 
+      : (Number(b.weeklySp) || 0);
+    if (wB !== wA) return wB - wA;
+    return (Number(b.spPoints) || 0) - (Number(a.spPoints) || 0);
+  });
+
+  // RESTRICT TO TOP 10 PERSONS ONLY FOR THE WEEK
+  const top10 = sorted.slice(0, 10);
+
+  if (top10.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400 italic">No weekly quiz scores logged yet for this week. Sit the Wednesday examination or units quiz to rank in the Top 10!</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = top10.map((u, i) => {
     const milestone = getMilestoneForSp(u.spPoints);
+    const weeklyEarned = (u.weeklyScores && u.weeklyScores[activeWeekCode] !== undefined) 
+      ? Number(u.weeklyScores[activeWeekCode]) 
+      : (Number(u.weeklySp) || 0);
+
     return `
       <tr class="hover:bg-slate-50 transition">
         <td class="p-3 font-bold text-slate-800">
@@ -976,7 +1159,7 @@ function renderLeaderboard() {
         </td>
         <td class="p-3 font-semibold text-slate-900 flex items-center space-x-2">
           <span>${u.fullName}</span>
-          ${STATE.currentUser && STATE.currentUser.id === u.id ? '<span class="text-[9px] bg-maroon text-white font-bold px-1.5 py-0.2 rounded">YOU</span>' : ''}
+          ${STATE.currentUser && (STATE.currentUser.id === u.id || (STATE.currentUser.email && u.email && STATE.currentUser.email.toLowerCase() === u.email.toLowerCase())) ? '<span class="text-[9px] bg-maroon text-white font-bold px-1.5 py-0.2 rounded">YOU</span>' : ''}
         </td>
         <td class="p-3 text-slate-600 text-xs">
           <span class="font-semibold text-slate-800">${u.role}</span>
@@ -985,7 +1168,12 @@ function renderLeaderboard() {
         <td class="p-3 text-xs font-bold text-slate-700">
           ${milestone.current.badge} Level ${milestone.current.level} (${milestone.current.name})
         </td>
-        <td class="p-3 font-black text-gold-dark">${u.spPoints} SP</td>
+        <td class="p-3">
+          <span class="font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+            +${weeklyEarned} SP
+          </span>
+        </td>
+        <td class="p-3 font-bold text-slate-700">${u.spPoints || 0} SP</td>
         <td class="p-3 text-right">
           <span class="text-[10px] font-bold px-2 py-0.5 rounded ${u.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
             ${u.isVerified ? 'VERIFIED' : 'PENDING'}
@@ -1037,7 +1225,7 @@ function requestRedemption(itemId) {
   const item = STATE.redemptionItems.find(i => i.id === itemId);
   if (!item) return;
 
-  if (STATE.currentUser.spPoints < item.spPrice) {
+  if (Number(STATE.currentUser.spPoints) < item.spPrice) {
     showToast(`Insufficient SP! You need ${item.spPrice} SP, but have ${STATE.currentUser.spPoints} SP.`);
     return;
   }
@@ -1048,8 +1236,11 @@ function requestRedemption(itemId) {
   }
 
   // Deduct points and stock
-  STATE.currentUser.spPoints -= item.spPrice;
+  STATE.currentUser.spPoints = Math.max(0, (Number(STATE.currentUser.spPoints) || 0) - item.spPrice);
   item.stock = Math.max(0, item.stock - 1);
+
+  // Immediately persist updated balance so points never revert on refresh!
+  saveUsersAndSession();
 
   const newRedemption = {
     id: "red_" + Math.random().toString(36).substring(2, 9),
@@ -1082,9 +1273,10 @@ function requestRedemption(itemId) {
   renderUserRedemptionHistory();
   renderAdminRedemptions();
   renderAdminStoreInventory();
+  renderLeaderboard();
   updateBadgeCounts();
 
-  showToast(`✅ Request for "${item.title}" submitted to Administration for collection!`);
+  showToast(`✅ Request for "${item.title}" submitted to Administration! Remaining balance: ${STATE.currentUser.spPoints} SP`);
 }
 
 function renderUserRedemptionHistory() {
@@ -1196,6 +1388,12 @@ function renderChatMessages() {
           <span class="text-[10px] text-slate-400">${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         <p class="text-xs text-slate-700 mt-1 leading-relaxed">${m.content}</p>
+        <div class="mt-1.5 flex items-center justify-end">
+          <button onclick="askGeminiQuick('${encodeURIComponent(m.content)}')" class="inline-flex items-center space-x-1 text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200/60 px-2 py-0.5 rounded-lg transition" title="Ask Gemini AI Tutor to explain or solve this">
+            <span class="material-symbols-outlined text-[13px] text-amber-500">auto_awesome</span>
+            <span>Ask Gemini Tutor</span>
+          </button>
+        </div>
       </div>
     </div>
   `).join("");
@@ -1283,18 +1481,40 @@ function renderAdminUsers() {
   const searchInput = document.getElementById("adminUserSearchInput");
   const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
 
+  // Show all users without artificial filters; apply search query if typed
   const filtered = STATE.users.filter(u => {
+    if (!u) return false;
     if (!query) return true;
-    return u.fullName.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
+    return (u.fullName && u.fullName.toLowerCase().includes(query)) || 
+           (u.email && u.email.toLowerCase().includes(query)) ||
+           (u.role && u.role.toLowerCase().includes(query)) ||
+           (u.stream && u.stream.toLowerCase().includes(query));
   });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-xs text-slate-400">No users found matching "${query}".</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = filtered.map(u => `
     <tr class="hover:bg-slate-50 transition">
-      <td class="p-3 font-semibold text-slate-900">${u.fullName}</td>
+      <td class="p-3 font-semibold text-slate-900">
+        <div class="flex items-center space-x-1.5">
+          <span>${u.fullName}</span>
+          ${STATE.currentUser && STATE.currentUser.id === u.id ? '<span class="text-[9px] bg-maroon text-white font-bold px-1.5 py-0.2 rounded">YOU</span>' : ''}
+        </div>
+      </td>
       <td class="p-3 text-xs text-slate-500">${u.email}</td>
       <td class="p-3 text-xs font-bold">${u.role}</td>
       <td class="p-3 text-xs text-slate-600">${u.stream}</td>
-      <td class="p-3 text-xs font-bold text-gold-dark">${u.spPoints} SP</td>
+      <td class="p-3 text-xs font-bold text-gold-dark">
+        <div class="flex items-center space-x-1">
+          <span>${u.spPoints || 0} SP</span>
+          <button onclick="adminAdjustUserSp('${u.id}')" class="text-slate-400 hover:text-amber-600 p-0.5 rounded" title="Adjust SP Points">
+            <span class="material-symbols-outlined text-[13px]">edit</span>
+          </button>
+        </div>
+      </td>
       <td class="p-3">
         <span class="text-[10px] font-bold px-2 py-0.5 rounded ${u.isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">
           ${u.isVerified ? 'VERIFIED' : 'PENDING'}
@@ -1306,13 +1526,13 @@ function renderAdminUsers() {
             Verify
           </button>
         ` : ''}
-        ${u.id !== 'admin_jasim' ? `
-          <button onclick="adminDeleteUser('${u.id}')" class="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[11px] font-bold shadow flex-inline items-center space-x-1">
+        ${u.id !== 'admin_jasim' && u.email !== 'mnmjaasim@gmail.com' ? `
+          <button onclick="adminDeleteUser('${u.id}')" class="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[11px] font-bold shadow inline-flex items-center space-x-1">
             <span class="material-symbols-outlined text-[14px]">delete</span>
             <span>Delete</span>
           </button>
         ` : `
-          <span class="text-xs text-slate-400 italic">Root Admin</span>
+          <span class="text-xs text-slate-400 italic font-medium">Root Admin</span>
         `}
       </td>
     </tr>
@@ -1324,6 +1544,7 @@ function verifyUser(userId) {
   const u = STATE.users.find(user => user.id === userId);
   if (u) {
     u.isVerified = true;
+    saveUsersAndSession();
     if (db) {
       try {
         db.ref("users/" + u.id + "/isVerified").set(true);
@@ -1338,6 +1559,41 @@ function verifyUser(userId) {
   }
 }
 
+// Admin can manually adjust student SP balance
+function adminAdjustUserSp(userId) {
+  if (!requireAdmin()) return;
+  const u = STATE.users.find(user => user.id === userId);
+  if (!u) return;
+
+  const input = prompt(`Enter new Science Points (SP) balance for ${u.fullName}:`, u.spPoints || 0);
+  if (input === null) return;
+  const newSp = parseInt(input, 10);
+  if (isNaN(newSp) || newSp < 0) {
+    showToast("⚠️ Invalid SP value. Please enter a positive integer.");
+    return;
+  }
+
+  u.spPoints = newSp;
+  if (STATE.currentUser && STATE.currentUser.id === u.id) {
+    STATE.currentUser.spPoints = newSp;
+  }
+  saveUsersAndSession();
+
+  if (db) {
+    try {
+      db.ref("users/" + u.id + "/spPoints").set(newSp);
+    } catch (e) {
+      console.warn("RTDB adjust SP error:", e);
+    }
+  }
+
+  renderAuthHeader();
+  renderAdminUsers();
+  renderLeaderboard();
+  renderMilestones();
+  showToast(`Updated SP balance for ${u.fullName} to ${newSp} SP.`);
+}
+
 // Admin can permanently delete users
 function adminDeleteUser(userId) {
   if (!requireAdmin()) return;
@@ -1346,6 +1602,12 @@ function adminDeleteUser(userId) {
 
   if (confirm(`Are you sure you want to permanently delete user "${u.fullName}" (${u.email})? This action cannot be undone.`)) {
     STATE.users = STATE.users.filter(user => user.id !== userId);
+
+    if (STATE.currentUser && STATE.currentUser.id === userId) {
+      handleLogout();
+    } else {
+      saveUsersAndSession();
+    }
 
     // Sync deletion to Firebase
     if (db) {
@@ -1516,9 +1778,8 @@ function renderAdminRedemptions() {
   container.innerHTML = filtered.map(r => {
     const targetId = r.id || r.firebaseKey;
     const statusLower = (r.status || "pending").toLowerCase();
-    const isCompleted = (statusLower === "fulfilled");
-    const isCancelled = (statusLower === "cancelled" || statusLower === "rejected");
-    const isActive = !isCompleted && !isCancelled;
+    const isCompleted = (statusLower === "fulfilled" || statusLower === "approved");
+    const isCancelled = (statusLower === "cancelled" || statusLower === "rejected" || statusLower === "declined");
 
     return `
       <div class="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
@@ -1528,7 +1789,7 @@ function renderAdminRedemptions() {
             <p class="text-xs text-slate-500">${r.userEmail || ''} • Stream: <strong>${r.userStream || 'Physical Science'}</strong></p>
           </div>
           <span class="text-xs font-bold px-2.5 py-1 rounded-full ${getStatusBadgeClass(r.status)}">
-            ${isCancelled ? 'Cancelled & Refunded' : isCompleted ? 'Handed Over' : r.status || 'Pending'}
+            ${isCancelled ? 'Cancelled & Refunded' : isCompleted ? 'Handed Over' : r.status || 'Pending Collection'}
           </span>
         </div>
 
@@ -1541,61 +1802,36 @@ function renderAdminRedemptions() {
         </div>
 
         <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
-          ${isActive ? `
-            ${statusLower === "pending" ? `
-              <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Approved')" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1 transition">
-                <span class="material-symbols-outlined text-[15px]">done</span>
-                <span>Approve</span>
-              </button>
-            ` : ''}
-            <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Fulfilled')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1 transition">
-              <span class="material-symbols-outlined text-[15px]">inventory_2</span>
-              <span>Mark Handed Over</span>
-            </button>
-            <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Cancelled')" class="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center space-x-1 transition">
-              <span class="material-symbols-outlined text-[15px]">cancel</span>
-              <span>Cancel & Refund</span>
-            </button>
-          ` : isCompleted ? `
-            <div class="flex items-center space-x-2">
-              <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center space-x-1">
-                <span class="material-symbols-outlined text-[15px]">check_circle</span>
-                <span>Handed Over & Completed</span>
-              </span>
-              <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Cancelled')" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:text-red-600 hover:border-red-300 text-xs font-semibold transition" title="Reverse and refund SP to student">
-                Cancel & Refund
-              </button>
-            </div>
-          ` : `
-            <span class="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 flex items-center space-x-1">
-              <span class="material-symbols-outlined text-[15px]">block</span>
-              <span>Cancelled & Refunded (${r.spSpent || 0} SP)</span>
-            </span>
-          `}
+          <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Approved')" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow flex items-center space-x-1.5 transition">
+            <span class="material-symbols-outlined text-[16px]">check_circle</span>
+            <span>Approve & Mark Handed Over</span>
+          </button>
+          <button type="button" onclick="updateRedemptionStatus('${targetId}', 'Cancelled')" class="px-3.5 py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center space-x-1.5 transition">
+            <span class="material-symbols-outlined text-[16px]">cancel</span>
+            <span>Cancel & Refund</span>
+          </button>
         </div>
       </div>
     `;
   }).join("");
 }
 
-function updateRedemptionStatus(redemptionId, newStatus) {
+function updateRedemptionStatus(redemptionId, action) {
   if (!requireAdmin()) return;
 
   const red = STATE.redemptions.find(r => r.id === redemptionId || r.firebaseKey === redemptionId);
   if (!red) {
-    showToast("⚠️ Redemption request record not found.");
+    showToast("⚠️ Redemption request record not found in queue.");
     return;
   }
 
-  const prevStatus = (red.status || "").toLowerCase();
-  const isCancelOrReject = (newStatus.toLowerCase() === "cancelled" || newStatus.toLowerCase() === "rejected");
-  const wasAlreadyRefunded = (prevStatus === "cancelled" || prevStatus === "rejected");
+  const targetKey = red.firebaseKey || red.id;
+  const isCancelOrDecline = (action === "Cancelled" || action === "Declined" || action === "Rejected");
 
-  // If cancelling/refunding and not previously refunded, restore Science Points to the student
-  if (isCancelOrReject && !wasAlreadyRefunded) {
+  // If cancelling/declining, restore Science Points to student
+  if (isCancelOrDecline) {
     const refundSp = Number(red.spSpent) || 0;
 
-    // Find user in STATE.users
     let user = STATE.users.find(u => (red.userId && u.id === red.userId) || (red.userEmail && u.email && u.email.toLowerCase() === red.userEmail.toLowerCase()));
     if (user) {
       user.spPoints = (Number(user.spPoints) || 0) + refundSp;
@@ -1605,8 +1841,10 @@ function updateRedemptionStatus(redemptionId, newStatus) {
       STATE.currentUser.spPoints = (Number(STATE.currentUser.spPoints) || 0) + refundSp;
     }
 
-    // Sync refund to Firebase RTDB
-    if (db && red.userId) {
+    saveUsersAndSession();
+
+    // Sync refunded balance to Firebase RTDB
+    if (db && (red.userId || (user && user.id))) {
       try {
         const targetUserId = user ? user.id : red.userId;
         const finalSp = user ? user.spPoints : refundSp;
@@ -1617,18 +1855,15 @@ function updateRedemptionStatus(redemptionId, newStatus) {
     }
   }
 
-  red.status = newStatus;
+  // Remove the record of student redemption store request completely from state after approving or declining
+  STATE.redemptions = STATE.redemptions.filter(r => r.id !== targetKey && r.firebaseKey !== targetKey && r.id !== redemptionId && r.firebaseKey !== redemptionId);
 
-  // Sync to Firebase RTDB
+  // Remove record from Firebase Realtime Database
   if (db) {
-    const targetKey = red.firebaseKey || red.id;
     try {
-      db.ref("redemption_requests/" + targetKey).update({
-        status: newStatus,
-        updatedAt: Date.now()
-      });
+      db.ref("redemption_requests/" + targetKey).remove();
     } catch (e) {
-      console.warn("RTDB update error:", e);
+      console.warn("RTDB remove redemption record error:", e);
     }
   }
 
@@ -1638,12 +1873,10 @@ function updateRedemptionStatus(redemptionId, newStatus) {
   renderLeaderboard();
   updateBadgeCounts();
 
-  if (isCancelOrReject) {
-    showToast(`↩️ Cancelled request for "${red.userName}" and refunded ${red.spSpent} SP.`);
-  } else if (newStatus === "Fulfilled") {
-    showToast(`🎁 Reward for "${red.userName}" marked as Handed Over!`);
+  if (isCancelOrDecline) {
+    showToast(`↩️ Request for "${red.itemTitle}" cancelled, ${red.spSpent} SP refunded to ${red.userName || 'student'}, and record removed.`);
   } else {
-    showToast(`✅ Updated request for "${red.userName}" to ${newStatus}.`);
+    showToast(`🎁 Reward "${red.itemTitle}" marked handed over to ${red.userName || 'student'} and record removed.`);
   }
 }
 
@@ -1998,3 +2231,581 @@ function showToast(message) {
     toast.classList.add("hidden", "translate-y-2");
   }, 4000);
 }
+
+// ====================================================
+// GEMINI MULTI-TURN AI TUTOR CHAT ENGINE
+// ====================================================
+
+const GEMINI_ROLES = {
+  general: {
+    name: "All-Round A/L Science Mentor",
+    tagline: "Comprehensive guidance across Physics, Combined Maths, Chemistry & Biology",
+    instruction: `You are the official ZNC Science AI Academic Tutor & Syllabus Mentor for Zahira National College (Mawanella) Science Section.
+You specialize in the Sri Lankan G.C.E. Advanced Level (A/L) English Medium curriculum for:
+- Physics (Mechanics, Waves, Optics, Thermal, Fields, Current Electricity, Electronics, Modern Physics)
+- Combined Mathematics (Pure Mathematics: Algebra, Calculus, Trigonometry, Coordinate Geometry, Complex Numbers; Applied Mathematics: Statics, Dynamics, Vectors, Projectiles, Equilibrium, Relative Velocity)
+- Chemistry (General, Physical, Inorganic s/p/d block, and Organic Chemistry)
+- Biology (Cellular, Plant/Animal Physiology, Genetics, Environmental Biology based on NIE Resource Book)
+
+Guidelines:
+1. Always maintain a polite, encouraging, highly structured academic tone.
+2. Provide step-by-step mathematical derivations and scientific explanations.
+3. Reference relevant fundamental laws (e.g. Newton's Laws, Bernoulli's Principle, Le Chatelier's Principle, Hess's Law).
+4. Highlight common A/L examination pitfalls and marking scheme tips.
+5. Use bullet points, bold formulas, and numbered steps for high readability.`
+  },
+  physics: {
+    name: "Physics Problem Solver",
+    tagline: "Senior A/L Physics Tutor • Formula Derivations & Mechanical Calculations",
+    instruction: `You are the ZNC Physics Problem Solver & Senior A/L Physics Tutor for Sri Lankan G.C.E. A/L students.
+Specialization:
+- Mechanics (Kinematics, Newton's Laws, Circular Motion, Work/Energy/Power, Hydrostatics, Fluid Dynamics & Bernoulli)
+- Waves & Oscillations (SHM, Doppler Effect, Wave Superposition, Sound & Light Waves)
+- Thermal Physics (Heat transfer, Gas Laws, Thermodynamics first law, Calorimetry)
+- Gravitational, Electrostatic, and Magnetic Fields
+- Current Electricity (Kirchhoff's Laws, Potentiometer, Wheatstone bridge)
+- Electronics & Modern Physics (Semiconductors, Logic gates, Photoelectric effect, Atomic spectra)
+
+Problem-Solving Protocol:
+1. Identify given values and requested quantities with proper SI units.
+2. Clearly state governing physics principles and standard equations (e.g. F = ma, v² = u² + 2as, P + 1/2ρv² + ρgh = const).
+3. Provide rigorous step-by-step substitution and algebraic simplification.
+4. Conclude with final answer with magnitude, direction (if vector), and SI units.
+5. Add an "A/L Past Paper Insight" tip for exam success.`
+  },
+  maths: {
+    name: "Combined Maths Specialist",
+    tagline: "Pure & Applied Mathematics Tutor • Rigorous Proofs & Algebraic Solutions",
+    instruction: `You are the ZNC Combined Mathematics Specialist & Master Tutor for Sri Lankan A/L students.
+Specialization:
+- Pure Mathematics: Algebra, Roots of Quadratics, Polynomials, Remainder Theorem, Binomial Theorem, Mathematical Induction, Complex Numbers & Argand Diagrams, Trigonometry identities & equations, Limits, Differentiation, Integration (by parts, partial fractions, substitution), Coordinate Geometry (Straight lines, Circles).
+- Applied Mathematics: Vectors (Scalar & Vector products), Coplanar Forces, Equilibrium of Rigid Bodies, Friction, Newton's Laws of Motion, Work-Energy-Power, Projectiles on horizontal and inclined planes, Direct & Oblique Impacts, Circular Motion, Relative Velocity, Jointed Rods and Frameworks, Probability & Statistics.
+
+Protocol:
+1. State definitions, theorems, and conditions clearly.
+2. Present structured, line-by-line algebraic proofs and geometric reasoning.
+3. Emphasize standard A/L methods preferred by Department of Examinations marking schemes.`
+  },
+  chemistry: {
+    name: "Chemistry Master",
+    tagline: "General, Physical, Inorganic & Organic Chemistry Expert",
+    instruction: `You are the ZNC Chemistry Academic Tutor for Sri Lankan A/L Chemistry.
+Specialization:
+- Atomic Structure, Chemical Bonding, and Periodic Trends
+- Chemical Calculations (Mole concept, Stoichiometry, Titrations)
+- Gaseous State and Real Gases (van der Waals equation)
+- Chemical Energetics & Thermodynamics (Hess's Law, Born-Haber cycle, Entropy, Gibbs Free Energy)
+- Chemical Kinetics (Rate laws, Collision theory, Arrhenius equation)
+- Chemical & Ionic Equilibrium (Kc, Kp, pH, Buffer solutions, Solubility product Ksp, Common ion effect)
+- Inorganic Chemistry (Characteristics, reactions, and qualitative analysis of s, p, and 3d block elements)
+- Organic Chemistry (Mechanisms: SN1, SN2, Electrophilic Addition, Electrophilic Aromatic Substitution, Carbonyl addition, Aldol condensation, tests for functional groups).
+
+Protocol:
+1. Always write balanced chemical equations with state symbols (s, l, g, aq).
+2. Explicitly specify reagents, catalysts, and reaction conditions (temperature, pressure) for organic conversions.`
+  },
+  biology: {
+    name: "Biology Resource Book Expert",
+    tagline: "NIE Resource Book Specialist • Precise Definitions & Essay Marking Criteria",
+    instruction: `You are the ZNC Biology Specialist & NIE Resource Book Advisor for Sri Lankan G.C.E. A/L Biology.
+Guidelines:
+1. Strictly follow the terminology and definitions presented in the official National Institute of Education (NIE) Sri Lanka G.C.E. A/L Biology Resource Books.
+2. Structure essay questions as bulleted marking criteria matching past paper marking schemes.
+3. Clearly detail biochemical pathways (Cellular Respiration, Photosynthesis light & dark reactions, DNA Replication, Protein Synthesis).
+4. Provide comparative tables when comparing anatomical or physiological structures.`
+  }
+};
+
+function initGeminiChat() {
+  // 1. Restore conversation history from localStorage
+  try {
+    const saved = localStorage.getItem("znc_gemini_chat_history");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        STATE.gemini.history = parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Gemini history restore error:", e);
+  }
+
+  // 2. Restore selected model and role preference
+  try {
+    const savedModel = localStorage.getItem("znc_gemini_selected_model");
+    if (savedModel) {
+      STATE.gemini.model = savedModel;
+      const modelSelect = document.getElementById("geminiModelSelect");
+      if (modelSelect) modelSelect.value = savedModel;
+    }
+
+    const savedRole = localStorage.getItem("znc_gemini_selected_role");
+    if (savedRole && GEMINI_ROLES[savedRole]) {
+      STATE.gemini.role = savedRole;
+      const roleSelect = document.getElementById("geminiRoleSelect");
+      if (roleSelect) roleSelect.value = savedRole;
+      const roleLabel = document.getElementById("activeRoleLabel");
+      if (roleLabel) roleLabel.innerText = GEMINI_ROLES[savedRole].name;
+    }
+  } catch (e) {}
+
+  // 3. Render initial welcome card if history is empty
+  renderGeminiChat();
+}
+
+function onGeminiRoleChange(newRole) {
+  if (GEMINI_ROLES[newRole]) {
+    STATE.gemini.role = newRole;
+    try {
+      localStorage.setItem("znc_gemini_selected_role", newRole);
+    } catch (e) {}
+    const roleLabel = document.getElementById("activeRoleLabel");
+    if (roleLabel) roleLabel.innerText = GEMINI_ROLES[newRole].name;
+    showToast(`Tutor switched to: ${GEMINI_ROLES[newRole].name}`);
+  }
+}
+
+function onGeminiModelChange(newModel) {
+  STATE.gemini.model = newModel;
+  try {
+    localStorage.setItem("znc_gemini_selected_model", newModel);
+  } catch (e) {}
+  showToast(`Active model: ${newModel}`);
+}
+
+function renderGeminiChat() {
+  const container = document.getElementById("geminiChatMessages");
+  if (!container) return;
+
+  const currentUserName = STATE.currentUser ? STATE.currentUser.fullName : "Student";
+
+  // If history is empty, display welcoming overview card
+  if (!STATE.gemini.history || STATE.gemini.history.length === 0) {
+    container.innerHTML = `
+      <div class="bg-gradient-to-br from-white via-slate-50 to-purple-50/40 p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-maroon via-purple-900 to-amber-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
+            <div class="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-amber-300">
+              <span class="material-symbols-outlined text-2xl">auto_awesome</span>
+            </div>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base text-slate-900">Assalamu Alaikum, ${currentUserName}!</h3>
+            <p class="text-xs text-slate-600">I am your official ZNC Science AI Academic Tutor powered by Google Gemini.</p>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-600 leading-relaxed">
+          I am trained on the complete Sri Lankan G.C.E. Advanced Level Science curriculum. You can ask me to solve physics calculations, derive mathematical equations, explain reaction mechanisms, clarify resource book concepts, or provide exam strategies.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div class="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+            <p class="text-xs font-bold text-maroon flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">psychology</span> Multi-Turn Context
+            </p>
+            <p class="text-[11px] text-slate-500 mt-1">I remember our previous queries in this thread so you can ask follow-up questions naturally.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs">
+            <p class="text-xs font-bold text-amber-700 flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">memory</span> Dynamic Model Selection
+            </p>
+            <p class="text-[11px] text-slate-500 mt-1">Use <strong>gemini-3.1-pro</strong> for complex math proofs, <strong>gemini-3.5-flash</strong> for general syllabus queries, or <strong>gemini-3.1-flash-lite</strong> for speed.</p>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200/60 flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-bold text-slate-400 mr-1">Quick Starters:</span>
+          <button onclick="sendQuickGeminiPrompt('Explain the Doppler effect in sound waves with moving source vs moving observer equations.')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 font-medium px-2.5 py-1 rounded-lg transition">
+            🔊 Doppler Effect Equations
+          </button>
+          <button onclick="sendQuickGeminiPrompt('What is the method of integration by parts in Combined Mathematics? Give an example.')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 font-medium px-2.5 py-1 rounded-lg transition">
+            📐 Integration by Parts
+          </button>
+          <button onclick="sendQuickGeminiPrompt('Explain the SN1 and SN2 reaction mechanisms in organic alkyl halides with stereochemistry.')" class="text-[11px] bg-slate-100 hover:bg-amber-100 text-slate-700 font-medium px-2.5 py-1 rounded-lg transition">
+            🧪 SN1 vs SN2 Mechanisms
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Render message history thread
+  let html = "";
+  for (let i = 0; i < STATE.gemini.history.length; i++) {
+    const msg = STATE.gemini.history[i];
+    const isUser = msg.role === "user";
+
+    if (isUser) {
+      const userInitials = (STATE.currentUser ? STATE.currentUser.fullName.charAt(0) : "S").toUpperCase();
+      html += `
+        <div class="flex items-start justify-end space-x-2.5 pl-6 sm:pl-16">
+          <div class="flex flex-col items-end">
+            <div class="bg-gradient-to-r from-maroon to-maroon-dark text-white p-3.5 sm:p-4 rounded-2xl rounded-tr-xs shadow-sm max-w-2xl border border-gold/20">
+              <p class="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">${escapeHtml(msg.text)}</p>
+            </div>
+            <div class="flex items-center space-x-2 mt-1 mr-1 text-[10px] text-slate-400 font-medium">
+              <span>${formatChatTime(msg.timestamp)}</span>
+              <span>•</span>
+              <span>You</span>
+            </div>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-maroon text-gold font-bold text-xs flex items-center justify-center border border-gold/40 shrink-0 shadow-xs">
+            ${userInitials}
+          </div>
+        </div>
+      `;
+    } else {
+      const formattedContent = formatGeminiMarkdown(msg.text);
+      const modelTag = msg.modelUsed || STATE.gemini.model;
+      const msgId = msg.id || `msg_ai_${i}`;
+
+      html += `
+        <div class="flex items-start space-x-2.5 pr-6 sm:pr-16">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shrink-0 shadow-xs">
+            <div class="w-full h-full bg-slate-900 rounded-[7px] flex items-center justify-center">
+              <span class="material-symbols-outlined text-amber-300 text-base">auto_awesome</span>
+            </div>
+          </div>
+          <div class="flex-1 max-w-3xl">
+            <div class="bg-white p-4 sm:p-5 rounded-2xl rounded-tl-xs shadow-xs border border-slate-200/90 text-slate-800">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-bold text-slate-900">Gemini Academic Tutor</span>
+                  <span class="text-[10px] font-extrabold uppercase px-2 py-0.2 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                    ${modelTag}
+                  </span>
+                </div>
+                <button onclick="copyGeminiMessage('${msgId}')" title="Copy response to clipboard" class="text-slate-400 hover:text-slate-700 text-xs flex items-center gap-1 font-semibold p-1 hover:bg-slate-100 rounded transition">
+                  <span class="material-symbols-outlined text-[15px]">content_copy</span>
+                  <span class="text-[10px] hidden sm:inline">Copy</span>
+                </button>
+              </div>
+
+              <!-- Message Body -->
+              <div id="${msgId}_content" class="text-xs sm:text-sm text-slate-800 space-y-2 leading-relaxed">
+                ${formattedContent}
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 mt-1 ml-1 text-[10px] text-slate-400 font-medium">
+              <span>${formatChatTime(msg.timestamp)}</span>
+              <span>•</span>
+              <span>ZNC Science Portal</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Thinking / Loading Indicator
+  if (STATE.gemini.isLoading) {
+    html += `
+      <div class="flex items-start space-x-2.5 pr-6 sm:pr-16">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shrink-0 shadow-xs animate-pulse">
+          <div class="w-full h-full bg-slate-900 rounded-[7px] flex items-center justify-center">
+            <span class="material-symbols-outlined text-amber-300 text-base">psychology</span>
+          </div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl rounded-tl-xs shadow-xs border border-slate-200 text-slate-700 flex items-center space-x-3">
+          <div class="flex space-x-1">
+            <div class="w-2 h-2 rounded-full bg-purple-600 animate-bounce" style="animation-delay: 0s"></div>
+            <div class="w-2 h-2 rounded-full bg-purple-600 animate-bounce" style="animation-delay: 0.2s"></div>
+            <div class="w-2 h-2 rounded-full bg-purple-600 animate-bounce" style="animation-delay: 0.4s"></div>
+          </div>
+          <span class="text-xs font-semibold text-slate-600">Gemini is analyzing syllabus and drafting step-by-step answer...</span>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+  scrollGeminiToBottom();
+}
+
+function scrollGeminiToBottom() {
+  const scrollContainer = document.getElementById("geminiChatMessagesContainer");
+  if (scrollContainer) {
+    setTimeout(() => {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    }, 50);
+  }
+}
+
+function handleGeminiFormSubmit(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById("geminiChatInput");
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  sendGeminiMessage(text);
+}
+
+function handleGeminiInputKeyDown(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    handleGeminiFormSubmit();
+  }
+}
+
+function sendQuickGeminiPrompt(text) {
+  navigateTo("gemini");
+  sendGeminiMessage(text);
+}
+
+function openGeminiChatQuick() {
+  navigateTo("gemini");
+  setTimeout(() => {
+    const input = document.getElementById("geminiChatInput");
+    if (input) {
+      input.focus();
+      input.scrollIntoView({ behavior: "smooth" });
+    }
+  }, 150);
+}
+
+function askGeminiQuick(encodedQuestionText) {
+  try {
+    const text = decodeURIComponent(encodedQuestionText);
+    navigateTo("gemini");
+    const prompt = `Student Discussion Question:\n"${text}"\n\nPlease provide a clear, step-by-step academic explanation, state all relevant physics/chemistry/maths formulas, and give exam tips for Sri Lankan A/L students.`;
+    sendGeminiMessage(prompt);
+  } catch (e) {
+    console.error("askGeminiQuick error:", e);
+  }
+}
+
+function askGeminiAboutQuizQuestion() {
+  if (!STATE.activeQuiz || !STATE.activeQuiz.questions) return;
+  const q = STATE.activeQuiz.questions[STATE.activeQuizQuestionIdx];
+  if (!q) return;
+
+  const unit = PHYSICS_UNITS.find(u => u.id === STATE.activeQuiz.unitId);
+  const unitName = unit ? unit.name : "Physics";
+
+  const prompt = `Physics Quiz Question from ${unitName}:\n"${q.q}"\n\nOptions:\n${q.options.map((o, idx) => `${idx + 1}) ${o}`).join("\n")}\n\nPlease explain the underlying physics principles, relevant equations, and concept steps required to solve this question correctly without directly giving away the letter option.`;
+
+  navigateTo("gemini");
+  sendGeminiMessage(prompt);
+}
+
+async function sendGeminiMessage(userText) {
+  if (!userText || STATE.gemini.isLoading) return;
+
+  const newMsg = {
+    id: "msg_user_" + Date.now(),
+    role: "user",
+    text: userText,
+    timestamp: Date.now()
+  };
+
+  STATE.gemini.history.push(newMsg);
+  STATE.gemini.isLoading = true;
+  renderGeminiChat();
+
+  // Save updated history
+  try {
+    localStorage.setItem("znc_gemini_chat_history", JSON.stringify(STATE.gemini.history));
+  } catch (e) {}
+
+  // Update send button state
+  const btnSend = document.getElementById("btnGeminiSend");
+  const sendIcon = document.getElementById("geminiSendIcon");
+  const sendText = document.getElementById("geminiSendText");
+  if (btnSend) btnSend.disabled = true;
+  if (sendIcon) sendIcon.innerText = "hourglass_top";
+  if (sendText) sendText.innerText = "Thinking...";
+
+  // Prepare payload with multi-turn conversation history
+  const activeRoleConfig = GEMINI_ROLES[STATE.gemini.role] || GEMINI_ROLES.general;
+  const messagesPayload = STATE.gemini.history.map(m => ({
+    role: m.role === "user" ? "user" : "model",
+    text: m.text
+  }));
+
+  try {
+    const response = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messagesPayload,
+        model: STATE.gemini.model,
+        systemInstruction: activeRoleConfig.instruction
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success && data.reply) {
+      STATE.gemini.history.push({
+        id: "msg_ai_" + Date.now(),
+        role: "model",
+        text: data.reply,
+        modelUsed: data.modelUsed || STATE.gemini.model,
+        timestamp: Date.now()
+      });
+    } else {
+      const errMsg = data.error || "Unable to retrieve response from Gemini.";
+      STATE.gemini.history.push({
+        id: "msg_ai_err_" + Date.now(),
+        role: "model",
+        text: `⚠️ **Notice from AI Tutor**: ${errMsg}\n\n*Tip*: If this model is temporarily busy, try selecting another model (such as **Gemini 3.5 Flash**) from the model selector dropdown above.`,
+        modelUsed: STATE.gemini.model,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    console.error("Gemini fetch error:", err);
+    STATE.gemini.history.push({
+      id: "msg_ai_err_" + Date.now(),
+      role: "model",
+      text: `⚠️ **Connection Error**: Could not reach Gemini AI tutor service (${err.message}). Please verify your network connection and try again.`,
+      modelUsed: STATE.gemini.model,
+      timestamp: Date.now()
+    });
+  } finally {
+    STATE.gemini.isLoading = false;
+    try {
+      localStorage.setItem("znc_gemini_chat_history", JSON.stringify(STATE.gemini.history));
+    } catch (e) {}
+
+    if (btnSend) btnSend.disabled = false;
+    if (sendIcon) sendIcon.innerText = "send";
+    if (sendText) sendText.innerText = "Send";
+
+    renderGeminiChat();
+  }
+}
+
+function clearGeminiChat() {
+  if (confirm("Are you sure you want to clear your conversation history with Gemini AI Tutor?")) {
+    STATE.gemini.history = [];
+    try {
+      localStorage.removeItem("znc_gemini_chat_history");
+    } catch (e) {}
+    renderGeminiChat();
+    showToast("Conversation history cleared.");
+  }
+}
+
+function exportGeminiChat() {
+  if (!STATE.gemini.history || STATE.gemini.history.length === 0) {
+    showToast("No conversation notes to export.");
+    return;
+  }
+
+  let textNotes = `ZNC SCIENCE PORTAL — GEMINI ACADEMIC TUTOR NOTES\n`;
+  textNotes += `Export Date: ${new Date().toLocaleString()}\n`;
+  textNotes += `Student: ${STATE.currentUser ? STATE.currentUser.fullName : "Guest"}\n`;
+  textNotes += `Tutor Role: ${GEMINI_ROLES[STATE.gemini.role]?.name || "Science Mentor"}\n`;
+  textNotes += `========================================================\n\n`;
+
+  STATE.gemini.history.forEach((m, idx) => {
+    const sender = m.role === "user" ? "YOU" : `GEMINI AI TUTOR (${m.modelUsed || "Gemini"})`;
+    textNotes += `[${sender} - ${new Date(m.timestamp).toLocaleTimeString()}]\n`;
+    textNotes += `${m.text}\n\n--------------------------------------------------------\n\n`;
+  });
+
+  navigator.clipboard.writeText(textNotes)
+    .then(() => {
+      showToast("📋 Conversation notes copied to clipboard!");
+    })
+    .catch(() => {
+      showToast("Could not copy notes to clipboard.");
+    });
+}
+
+function copyGeminiMessage(msgId) {
+  const contentEl = document.getElementById(msgId + "_content");
+  if (!contentEl) return;
+  const text = contentEl.innerText;
+  navigator.clipboard.writeText(text)
+    .then(() => showToast("Answer copied to clipboard!"))
+    .catch(() => showToast("Failed to copy answer."));
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatChatTime(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatGeminiMarkdown(text) {
+  if (!text) return "";
+
+  let escaped = escapeHtml(text);
+
+  // Code blocks: ```code```
+  escaped = escaped.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    return `<div class="my-2.5 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shadow-xs">
+      <div class="bg-slate-800 px-3 py-1 text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider flex justify-between items-center">
+        <span>${lang || 'CODE / FORMULA'}</span>
+      </div>
+      <pre class="p-3 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed"><code>${code.trim()}</code></pre>
+    </div>`;
+  });
+
+  // Inline code: `code`
+  escaped = escaped.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-purple-900 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold border border-slate-200">$1</code>');
+
+  // Bold: **text**
+  escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-slate-900">$1</strong>');
+
+  // Italic: *text*
+  escaped = escaped.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em class="italic text-slate-800">$2</em>');
+
+  // Headings
+  escaped = escaped.replace(/^### (.*$)/gim, '<h4 class="font-black text-xs sm:text-sm text-maroon mt-3 mb-1">$1</h4>');
+  escaped = escaped.replace(/^## (.*$)/gim, '<h3 class="font-black text-sm text-slate-900 mt-3.5 mb-1.5 border-b pb-1">$1</h3>');
+
+  // Lines to paragraphs / lists
+  const lines = escaped.split("\n");
+  let inList = false;
+  let formatted = [];
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("* ") || trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
+      if (!inList) {
+        formatted.push('<ul class="list-disc pl-5 my-1.5 space-y-1 text-slate-800">');
+        inList = true;
+      }
+      formatted.push(`<li>${trimmed.substring(2)}</li>`);
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      if (inList) {
+        formatted.push('</ul>');
+        inList = false;
+      }
+      formatted.push(`<div class="pl-2 my-1 text-slate-800 font-semibold">${trimmed}</div>`);
+    } else {
+      if (inList) {
+        formatted.push('</ul>');
+        inList = false;
+      }
+      if (trimmed === "") {
+        formatted.push('<div class="h-1.5"></div>');
+      } else {
+        formatted.push(`<p class="my-1 leading-relaxed text-slate-800">${line}</p>`);
+      }
+    }
+  }
+
+  if (inList) {
+    formatted.push('</ul>');
+  }
+
+  return formatted.join("");
+}
+
