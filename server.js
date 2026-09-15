@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
-const PORT = process.env.PORT || 3000;
+// In Cloud Run / AI Studio container behind nginx, PORT is set to 8080 for nginx,
+// while the internal node app must listen on 3000 (DEFAULT_APP_PORT).
+const PORT = parseInt(process.env.APP_PORT || (process.env.PORT && process.env.PORT !== '8080' ? process.env.PORT : '3000'), 10);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const MIME_TYPES = {
@@ -148,7 +150,8 @@ async function callGemini(messages, model = 'gemini-3.5-flash', systemInstructio
 
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
+  const rawPath = parsedUrl.pathname || '/';
+  const pathname = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
 
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -162,9 +165,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   // API Endpoint: /api/gemini/status
-  if (req.method === 'GET' && pathname === '/api/gemini/status') {
+  if (pathname === '/api/gemini/status') {
+    if (req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Method Not Allowed. Use GET.' }));
+      return;
+    }
     const hasKey = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY';
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
     res.end(JSON.stringify({
       status: 'ready',
       hasKey: hasKey,
@@ -178,8 +186,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // API Endpoint: /api/gemini (POST)
-  if (req.method === 'POST' && pathname === '/api/gemini') {
+  // API Endpoint: /api/gemini
+  if (pathname === '/api/gemini') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        message: 'Gemini AI Tutor endpoint is operational. Send a POST request with messages.',
+        status: 'ready'
+      }));
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST.' }));
+      return;
+    }
+
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
@@ -201,7 +224,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const result = await callGemini(messages, model, systemInstruction);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
         res.end(JSON.stringify({
           success: true,
           reply: result.reply,
@@ -217,6 +240,13 @@ const server = http.createServer(async (req, res) => {
         }));
       }
     });
+    return;
+  }
+
+  // Any other API path
+  if (pathname.startsWith('/api/')) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'API endpoint not found.' }));
     return;
   }
 
@@ -260,8 +290,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(405, { 'Content-Type': 'text/plain' });
-  res.end('Method Not Allowed');
+  res.writeHead(405, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Server uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Server unhandled rejection at:', promise, 'reason:', reason);
 });
 
 server.listen(PORT, '0.0.0.0', () => {

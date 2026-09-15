@@ -864,16 +864,16 @@
         
         <!-- Header Controls -->
         <div class="bg-gradient-to-r from-maroon via-maroon-dark to-purple-950 text-white p-4 sm:px-6 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gold/30">
-          <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-3 shrink-0">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-md flex items-center justify-center shrink-0">
               <div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                <span class="material-symbols-outlined text-amber-300 text-xl animate-pulse">auto_awesome</span>
+                <span class="material-symbols-outlined text-amber-300 text-xl">auto_awesome</span>
               </div>
             </div>
             <div>
-              <div class="flex items-center space-x-2">
-                <h2 class="font-extrabold text-base sm:text-lg tracking-tight text-white">Gemini AI Academic Tutor</h2>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
+              <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                <h2 class="font-extrabold text-base sm:text-lg tracking-tight text-white whitespace-nowrap">Gemini AI Academic Tutor</h2>
+                <span id="geminiStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1 shrink-0">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live A/L AI
                 </span>
               </div>
@@ -896,7 +896,7 @@
               </select>
             </div>
 
-            <!-- Model Selector (per instructions: gemini-3.1-pro-preview for complex, gemini-3.5-flash for general, gemini-3.1-flash-lite for fast, gemini-3.8-flash) -->
+            <!-- Model Selector -->
             <div class="flex items-center space-x-1.5 bg-black/30 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-white/10">
               <span class="material-symbols-outlined text-[16px] text-amber-300">memory</span>
               <label for="geminiModelSelect" class="text-[10px] font-bold text-slate-300 uppercase tracking-wider hidden sm:inline">Model:</label>
@@ -908,8 +908,11 @@
               </select>
             </div>
 
-            <!-- Clear & Export Buttons -->
+            <!-- Clear, Export & API Settings Buttons -->
             <div class="flex items-center space-x-1">
+              <button onclick="promptGeminiApiKey()" title="Client API Key (Optional fallback for static hosting)" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition flex items-center">
+                <span class="material-symbols-outlined text-[18px]">key</span>
+              </button>
               <button onclick="clearGeminiChat()" title="Clear conversation history" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition flex items-center">
                 <span class="material-symbols-outlined text-[18px]">delete_sweep</span>
               </button>

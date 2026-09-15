@@ -2351,6 +2351,7 @@ function initGeminiChat() {
 
   // 3. Render initial welcome card if history is empty
   renderGeminiChat();
+  checkGeminiBackendStatus();
 }
 
 function onGeminiRoleChange(newRole) {
@@ -2592,6 +2593,107 @@ function askGeminiAboutQuizQuestion() {
   sendGeminiMessage(prompt);
 }
 
+async function checkGeminiBackendStatus() {
+  const statusBadge = document.getElementById("geminiStatusBadge");
+  try {
+    const res = await fetch("/api/gemini/status");
+    if (res.ok) {
+      const data = await res.json();
+      if (statusBadge) {
+        statusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live A/L AI`;
+        statusBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1";
+      }
+      return true;
+    }
+  } catch (e) {
+    console.warn("Backend status check error:", e);
+  }
+
+  const customKey = localStorage.getItem("znc_custom_gemini_api_key");
+  if (statusBadge) {
+    if (customKey) {
+      statusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Client Key Active`;
+      statusBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/40 flex items-center gap-1";
+    } else {
+      statusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Standalone / Direct`;
+      statusBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center gap-1";
+    }
+  }
+  return false;
+}
+
+function promptGeminiApiKey() {
+  const current = localStorage.getItem("znc_custom_gemini_api_key") || "";
+  const key = prompt(
+    "Optional Client-Side Google Gemini API Key:\n\n" +
+    "If your server is in static hosting mode or you prefer using your own quota, enter your Gemini API Key below.\n" +
+    "(Leave empty to use the Portal server proxy)",
+    current
+  );
+
+  if (key !== null) {
+    if (key.trim()) {
+      localStorage.setItem("znc_custom_gemini_api_key", key.trim());
+      showToast("Custom Gemini API Key saved for client-side queries!");
+    } else {
+      localStorage.removeItem("znc_custom_gemini_api_key");
+      showToast("Reset to server default Gemini connection.");
+    }
+    checkGeminiBackendStatus();
+  }
+}
+
+async function callDirectGeminiApi(apiKey, messages, model, systemInstruction) {
+  const formattedContents = [];
+  for (const msg of messages) {
+    if (!msg || !msg.text) continue;
+    const role = (msg.role === "model" || msg.role === "assistant") ? "model" : "user";
+    formattedContents.push({
+      role: role,
+      parts: [{ text: String(msg.text).trim() }]
+    });
+  }
+  if (formattedContents.length === 0) throw new Error("No message text provided.");
+  if (formattedContents[formattedContents.length - 1].role !== "user") {
+    formattedContents.push({ role: "user", parts: [{ text: "Please continue or summarize." }] });
+  }
+
+  const payload = {
+    contents: formattedContents,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+      topP: 0.95
+    }
+  };
+  if (systemInstruction) {
+    payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+  }
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const resp = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const contentType = resp.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const raw = await resp.text();
+    throw new Error(`Google API returned ${resp.status}: ${raw.substring(0, 120)}`);
+  }
+
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.error ? data.error.message : `API returned HTTP ${resp.status}`);
+  }
+  const candidate = data.candidates?.[0];
+  if (!candidate) throw new Error("No candidate returned by Gemini.");
+  const text = candidate.content?.parts?.map(p => p.text || "").join("\n") || "";
+  if (!text.trim()) throw new Error("Empty text received from Gemini.");
+  return text;
+}
+
 async function sendGeminiMessage(userText) {
   if (!userText || STATE.gemini.isLoading) return;
 
@@ -2619,50 +2721,80 @@ async function sendGeminiMessage(userText) {
   if (sendIcon) sendIcon.innerText = "hourglass_top";
   if (sendText) sendText.innerText = "Thinking...";
 
-  // Prepare payload with multi-turn conversation history
+  // Prepare payload with multi-turn conversation history (exclude error messages)
   const activeRoleConfig = GEMINI_ROLES[STATE.gemini.role] || GEMINI_ROLES.general;
-  const messagesPayload = STATE.gemini.history.map(m => ({
-    role: m.role === "user" ? "user" : "model",
-    text: m.text
-  }));
+  const messagesPayload = STATE.gemini.history
+    .filter(m => !m.id || !m.id.startsWith("msg_ai_err_"))
+    .map(m => ({
+      role: m.role === "user" ? "user" : "model",
+      text: m.text
+    }));
 
   try {
-    const response = await fetch("/api/gemini", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: messagesPayload,
-        model: STATE.gemini.model,
-        systemInstruction: activeRoleConfig.instruction
-      })
-    });
+    let replyText = null;
+    let modelUsed = STATE.gemini.model;
 
-    const data = await response.json();
+    const customApiKey = (localStorage.getItem("znc_custom_gemini_api_key") || "").trim();
 
-    if (data.success && data.reply) {
+    let serverError = null;
+    // 1. Try server endpoint first
+    try {
+      const response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: messagesPayload,
+          model: STATE.gemini.model,
+          systemInstruction: activeRoleConfig.instruction
+        })
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.success && data.reply) {
+          replyText = data.reply;
+          modelUsed = data.modelUsed || STATE.gemini.model;
+        } else {
+          serverError = new Error(data.error || `Server error (${response.status})`);
+        }
+      } else {
+        const rawText = await response.text();
+        serverError = new Error(`Server returned HTTP ${response.status} (${rawText.trim() || response.statusText})`);
+      }
+    } catch (netErr) {
+      serverError = netErr;
+    }
+
+    // 2. If server failed and custom API key is present, fallback to direct Google Generative Language API
+    if (!replyText) {
+      if (customApiKey) {
+        try {
+          replyText = await callDirectGeminiApi(customApiKey, messagesPayload, STATE.gemini.model, activeRoleConfig.instruction);
+          modelUsed = `${STATE.gemini.model} (Direct)`;
+        } catch (directErr) {
+          throw new Error(`Server proxy error: ${serverError?.message || 'Failed'}. Direct API error: ${directErr.message}`);
+        }
+      } else if (serverError) {
+        throw serverError;
+      }
+    }
+
+    if (replyText) {
       STATE.gemini.history.push({
         id: "msg_ai_" + Date.now(),
         role: "model",
-        text: data.reply,
-        modelUsed: data.modelUsed || STATE.gemini.model,
-        timestamp: Date.now()
-      });
-    } else {
-      const errMsg = data.error || "Unable to retrieve response from Gemini.";
-      STATE.gemini.history.push({
-        id: "msg_ai_err_" + Date.now(),
-        role: "model",
-        text: `⚠️ **Notice from AI Tutor**: ${errMsg}\n\n*Tip*: If this model is temporarily busy, try selecting another model (such as **Gemini 3.5 Flash**) from the model selector dropdown above.`,
-        modelUsed: STATE.gemini.model,
+        text: replyText,
+        modelUsed: modelUsed,
         timestamp: Date.now()
       });
     }
   } catch (err) {
-    console.error("Gemini fetch error:", err);
+    console.error("Gemini Tutor Error:", err);
     STATE.gemini.history.push({
       id: "msg_ai_err_" + Date.now(),
       role: "model",
-      text: `⚠️ **Connection Error**: Could not reach Gemini AI tutor service (${err.message}). Please verify your network connection and try again.`,
+      text: `⚠️ **AI Tutor Notice**: ${err.message}\n\n*Tip*: If this persists, verify your server is running (\`node server.js\`) or click the 🔑 API Key button to supply a personal Gemini key.`,
       modelUsed: STATE.gemini.model,
       timestamp: Date.now()
     });
